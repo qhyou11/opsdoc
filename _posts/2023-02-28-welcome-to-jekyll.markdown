@@ -1,6 +1,6 @@
 ---
 layout: post
-title:  "postman禁用302自动跳转"
+title:  "Postman禁用302自动跳转"
 date:   2023-02-28 13:26:35 +0800
 categories: jekyll update
 ---
