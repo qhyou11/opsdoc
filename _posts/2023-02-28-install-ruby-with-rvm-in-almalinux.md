@@ -28,12 +28,12 @@ There has been an error while running make install. Halting the installation.
 ```
 
 根据提示信息查看报错日志/home/gem/.rvm/log/1677551981_ruby-3.2.0/install.log，有如下信息：
-
+```
 <internal:/home/gem/.rvm/src/ruby-3.2.0/lib/rubygems/core_ext/kernel_require.rb>:85:in `require': cannot load such file -- psych (LoadError)
 from <internal:/home/gem/.rvm/src/ruby-3.2.0/lib/rubygems/core_ext/kernel_require.rb>:85:in `require'
 from /home/gem/.rvm/src/ruby-3.2.0/lib/rubygems.rb:610:in `load_yaml'
 from /home/gem/.rvm/src/ruby-3.2.0/lib/rubygems/config_file.rb:346:in `load_file'
-
+```
 往前翻翻：
 ```
 make[1]: Entering directory '/home/gem/.rvm/src/ruby-3.2.0'
