@@ -1,29 +1,21 @@
 ---
 layout: post
-title:  "Welcome to Jekyll!"
+title:  "postman禁用302自动跳转"
 date:   2023-02-28 13:26:35 +0800
 categories: jekyll update
 ---
-You’ll find this post in your `_posts` directory. Go ahead and edit it and re-build the site to see your changes. You can rebuild the site in many different ways, but the most common way is to run `jekyll serve`, which launches a web server and auto-regenerates your site when a file is updated.
+最近在调试一个api时，碰到一个奇怪的事情。我从浏览器F12的网络标签页拷贝了一个bash格式的请求，这个请求在linux机器上返回的是302，但是把请求录入到postman之后，点击测试，得到的结果却是400.
+经过一番折腾后，发现postman有如下配置：
 
-Jekyll requires blog post files to be named according to the following format:
+![](https://f.003721.xyz/2023/02/23048c1bb7f88ae337fa343cae1c9a3e.png)
 
-`YEAR-MONTH-DAY-title.MARKUP`
+![](https://f.003721.xyz/2023/02/7b646aba8d5ffecf9a05c1064efaa879.png)
 
-Where `YEAR` is a four-digit number, `MONTH` and `DAY` are both two-digit numbers, and `MARKUP` is the file extension representing the format used in the file. After that, include the necessary front matter. Take a look at the source for this post to get an idea about how it works.
+[Automatically follow redirects] 这个选项会导致postman自动获取302返回响应消息中的Location，并代替我们向这个location发起请求。
+取消这个勾选后，我们可以获得和linux上手工curl一样的结果。
+这个参数也可以设置在每个请求里：
 
-Jekyll also offers powerful support for code snippets:
+![](https://f.003721.xyz/2023/02/f3b4f57758a86ebf9f0f44cd8572d7cf.png)
 
-{% highlight ruby %}
-def print_hi(name)
-  puts "Hi, #{name}"
-end
-print_hi('Tom')
-#=> prints 'Hi, Tom' to STDOUT.
-{% endhighlight %}
+PS: curl 语句加上-L 选项也会自动触发对302的跳转。
 
-Check out the [Jekyll docs][jekyll-docs] for more info on how to get the most out of Jekyll. File all bugs/feature requests at [Jekyll’s GitHub repo][jekyll-gh]. If you have questions, you can ask them on [Jekyll Talk][jekyll-talk].
-
-[jekyll-docs]: https://jekyllrb.com/docs/home
-[jekyll-gh]:   https://github.com/jekyll/jekyll
-[jekyll-talk]: https://talk.jekyllrb.com/
