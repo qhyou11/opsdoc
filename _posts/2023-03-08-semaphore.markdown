@@ -17,6 +17,7 @@ Semaphore支持对接LDAP，并可以通过邮件，telegram，slack等方式触
 Semaphore有个concurrency_mode参数，默认情况下不允许并发执行任务，这个参数可以设置成project或者node。当参数设置成project时，如果task之间是属于不同的project_id时，它们是可以并发执行的，不会校验节点之间是否有相互影响。如果参数设置成node，则仅当这些节点间互不影响时才能并发执行。
 
 # 入门指南
+
 ## 门户界面
 打开系统登录界面：
 
@@ -61,8 +62,10 @@ Team页面主要是维护哪些用户可以使用本项目。
 ![](https://f.003721.xyz/2023/03/20d2000fad46a01f70859e337bfa812b.png)
 
 ## 入门任务
+
 我们从一个全新的环境开始配置练手任务。
 ### 免密配置
+
 在配置Inventory之前，我们先做下Semaphore到各个被控节点的公钥免密登录。首先，我们在Semaphore容器上生成一对密钥。
 ```
 $ docker exec -ti semaphore sh
@@ -103,6 +106,7 @@ vi $HOME/.ssh/authorized_keys
 `ssh -i /var/lib/semaphore/id_rsa testuser@192.168.xxx.xxx` ,一方面可以验证下免密登录是否生效，另一方面可以避免后续ansible到各个客户端执行命令时碰到指纹验证问题。
 
 ### Key Store
+
 完成所有节点的免密登录后，我们可以回到Semaphore界面的配置上。
 在配置Inventory之前，我们先到Key Store里配置一个ssh的私钥，把我们上面创建的id_rsa托管在里面。
 ![](https://f.003721.xyz/2023/03/aea58405b3619e3186ec68eb43508e2c.png)
@@ -111,6 +115,7 @@ vi $HOME/.ssh/authorized_keys
 ![](https://f.003721.xyz/2023/03/7d7d8381666f0d6b7b1818903bcc7e58.png)
 
 ### Inventory
+
 然后进入Inventory页面：
 ![](https://f.003721.xyz/2023/03/2e0dd712c3b608612a84114b94619ce5.png)
 点击Inventory界面上的[New Inventory]按钮：
@@ -125,11 +130,13 @@ vi $HOME/.ssh/authorized_keys
 User Credentials选择我们前面创建的SSH key。
 
 ### Environment
+
 作为一个新手任务Environment我们不做过多配置，暂时都置空。
 ![](https://f.003721.xyz/2023/03/36f2ba311e1487dc6450e3b452b635c8.png)
 这里有个坑，界面上给出的样例里1245是个数值类型，这种写法不符合json要求，会导致后续task执行失败，需要写成字符串形式。
 
 ### Repositories
+
 我们创建一个本地存储类型的repository。所有的Repositories都需要配置AccessKey，对于本地存储，这个key就是一个空值。我们需要在Key Store中增加一个None类型的key来占位。
 ![](https://f.003721.xyz/2023/03/9e855b7f0127e84022461305dc676308.png)
 打开Repositories页面：
@@ -138,6 +145,7 @@ User Credentials选择我们前面创建的SSH key。
 ![](https://f.003721.xyz/2023/03/c8dd123ee78f4393a8cfee05803ccfd0.png)
 
 ### playbook 文件生成
+
 我们可以让必应生成一个playbook样例
 ![](https://f.003721.xyz/2023/03/abe578fdfd4232cf53bcf2a55107f284.png)
 然后将这个样例放到容器目录里，由于我们的容器是以卷组方式挂到宿主机，因此可以直接在宿主机上操作。
@@ -148,6 +156,7 @@ xxxx@xxxxx[/home/xxxx/semaphore/volumes/lib/repo]$ sudo vi diskusage.yml
 xxxx@xxxxx[/home/xxxx/semaphore/volumes/lib]$ sudo chown -R 1001 repo/
 ```
 ### 配置task
+
 在Task Templates页面上点击[New Template]
 ![](https://f.003721.xyz/2023/03/13614d18ccf02b7546ef0331c6f7dd5d.png)
 Playbook Filename 里填写相对路径，其它选项用我们前面创建好的Inventory，repository和Env等：
