@@ -19,6 +19,7 @@ Semaphore有个concurrency_mode参数，默认情况下不允许并发执行任�
 # 入门指南
 
 ## 门户界面
+
 打开系统登录界面：
 
 ![](https://f.003721.xyz/2023/03/ce2d725a29b12b0dbb389d7d6a4d6d79.png)
