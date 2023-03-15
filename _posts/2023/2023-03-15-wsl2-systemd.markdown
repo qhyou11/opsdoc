@@ -1,8 +1,8 @@
 ---
 layout: post
 title:  "WSL2开启systemd"
-date:   2023-03-15 14 10:03:00 +0800
-categories: jekyll update
+date:   2023-03-15 10:03:00 +0800
+category: update
 ---
 微软目前已经支持在WSL2中启用systemd。我手上的机器是老早前装的操作系统，WSL2的版本也比较老，因此需要升级下WSL2才能启用这个功能。
 
