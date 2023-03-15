@@ -8,6 +8,8 @@ categories: jekyll update
 
 ## 下载最新的WSL2
 受网络因素等制约，本机的微软商店打开并不灵光，因此，我们优先考虑直接从网上下载安装包安装新版wsl2.下载地址如下：
+
+
 <https://github.com/microsoft/WSL/releases>
 
 下载后可以直接双击安装。
