@@ -10,7 +10,7 @@ title: Zen of Devops
 name: QingYo
 email: me@nobody.known
 github_url: None
-github_username: goufajin
+github_username: NobodyKnown
 description: 技术博客，记录日常运维收获·
 favicon: favicon.png
 repository: None
@@ -61,7 +61,7 @@ navs:
     target: _self
     subnav:
       - subHref: /jvm.html
-        subLabel: Jvm
+        subLabel: jekyll
 
   - href: /spring.html
     label: Spring
