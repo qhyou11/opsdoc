@@ -1,6 +1,6 @@
 ---
 layout: page
-title: 大道至简 又隐于无形
+title: 运维之道
 css: ['blog-page.css']
 permalink: /about
 menu: about
