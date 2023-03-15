@@ -82,14 +82,6 @@ navs:
       - subHref: /kafka.html
         subLabel: Kafka
 
-  - href: /bigdata.html
-    label: 大数据
-    target: _self
-    subnav:
-      - subHref: /hadoop.html
-        subLabel: Hadoop
-      - subHref: /python.html
-        subLabel: Python
   - href: /about.html
     label: About
 
