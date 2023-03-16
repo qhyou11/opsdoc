@@ -64,7 +64,9 @@ navs:
         subLabel: Linux
       - subHref: /container.html
         subLabel: Container
-
+      - subHref: /automatic.html
+        subLabel: Automatic
+        
   - href: /dev.html
     label: Dev
     target: _self

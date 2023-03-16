@@ -2,7 +2,7 @@
 layout: post
 title:  "Podman仓库鉴权文件"
 date:   2023-03-01 16:01:00 +0800
-categories: Container
+category: Container
 ---
 podman login仓库后，默认会将鉴权的文件生成到`${XDG_RUNTIME_DIR}/containers/auth.json` 目录下，也就是
 `/run/containers/0/auth.json`.

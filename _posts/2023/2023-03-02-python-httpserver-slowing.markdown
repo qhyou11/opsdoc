@@ -2,7 +2,7 @@
 layout: post
 title:  "Python HttpServer启动缓慢问题"
 date:   2023-03-02 14:54:00 +0800
-categories: Linux
+category: Linux
 ---
 前段时间在做一个demo时，在一个虚拟机上用python自带的httpserver模块启动了简单的web服务端。启动的指令如下:
 ```
