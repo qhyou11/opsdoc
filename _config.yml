@@ -66,7 +66,7 @@ navs:
         subLabel: Container
       - subHref: /automatic.html
         subLabel: Automatic
-        
+
   - href: /dev.html
     label: Dev
     target: _self
@@ -107,6 +107,6 @@ skill_cloud_keywords: [Alibaba,AWS,PrivateCloud]
 skill_dev_keywords: [Python,Golang,Java]
 skill_db_keywords: [Oracle,MySQL,Influxdb]
 skill_bigdata_keywords: [ElasticSearch,Hadoop,HBase]
-
-categories: [Linux,Container,kubernetes,Virtualization,Unix,Python,Golang,Java,Alibaba,AWS,PrivateCloud,Oracle,MySQL,Influxdb,ElasticSearch,Hadoop,HBase]
+skill_architecture_keywords: [Topology,Capacity,HA,Backup]
+categories: [Linux,Container,kubernetes,Virtualization,Unix,Python,Golang,Java,Alibaba,AWS,PrivateCloud,Oracle,MySQL,Influxdb,ElasticSearch,Hadoop,HBase,Topology,Capacity,HA,Backup]
 
