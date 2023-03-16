@@ -2,7 +2,7 @@
 layout: post
 title:  "Postman禁用302自动跳转"
 date:   2023-02-28 13:26:35 +0800
-categories: jekyll update
+categories: Dev
 ---
 最近在调试一个api时，碰到一个奇怪的事情。我从浏览器F12的网络标签页拷贝了一个bash格式的请求，这个请求在linux机器上返回的是302，但是把请求录入到postman之后，点击测试，得到的结果却是400.
 经过一番折腾后，发现postman有如下配置：

@@ -2,7 +2,7 @@
 layout: post
 title:  "AlmaLinux下通过rvm安装ruby-3.2.0报错"
 date:   2023-02-28 14:17:35 +0800
-categories: jekyll update
+categories: Dev
 ---
 执行如下指令进行ruby安装，结果出错:
 

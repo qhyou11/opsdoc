@@ -56,31 +56,34 @@ navs:
   - href: /
     label: Home
 
-  - href: /java.html
-    label: Java
+  - href: /ops.html
+    label: Ops
     target: _self
     subnav:
-      - subHref: /jvm.html
-        subLabel: jekyll
+      - subHref: /linux.html
+        subLabel: Linux
+      - subHref: /container.html
+        subLabel: Container
 
-  - href: /spring.html
-    label: Spring
+  - href: /dev.html
+    label: Dev
     target: _self
-    subnav:
-      - subHref: /springboot.html
-        subLabel: SpringBoot
-      - subHref: /springcloud.html
-        subLabel: SpringCloud
-  - href: /
-    label: 中间件
-    target: _self
-    subnav:
-      - subHref: /redis.html
-        subLabel: Redis
-      - subHref: /zookeeper.html
-        subLabel: ZooKeeper
-      - subHref: /kafka.html
-        subLabel: Kafka
+    # subnav:
+    #   - subHref: /springboot.html
+    #     subLabel: SpringBoot
+    #   - subHref: /springcloud.html
+    #     subLabel: SpringCloud
+
+  # - href: /
+  #   label: 中间件
+  #   target: _self
+  #   subnav:
+  #     - subHref: /redis.html
+  #       subLabel: Redis
+  #     - subHref: /zookeeper.html
+  #       subLabel: ZooKeeper
+  #     - subHref: /kafka.html
+  #       subLabel: Kafka
 
   - href: /about.html
     label: About
@@ -97,6 +100,11 @@ analytics:
 
 
 # For about.html. Fell free to create your own!
-skill_back_keywords: [Ops,Python,Java,Golang,Cloud,MySQL]
-categories: [HikariCP,Spring-Boot,Linux,Kafka,Spring-Framework]
+skill_ops_keywords: [Linux,Container,kubernetes,Virtualization,Automatic,Unix]
+skill_cloud_keywords: [Alibaba,AWS,PrivateCloud]
+skill_dev_keywords: [Python,Golang,Java]
+skill_db_keywords: [Oracle,MySQL,Influxdb]
+skill_bigdata_keywords: [ElasticSearch,Hadoop,HBase]
+
+categories: [Linux,Container,kubernetes,Virtualization,Unix,Python,Golang,Java,Alibaba,AWS,PrivateCloud,Oracle,MySQL,Influxdb,ElasticSearch,Hadoop,HBase]
 

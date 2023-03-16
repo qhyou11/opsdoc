@@ -2,7 +2,7 @@
 layout: post
 title:  "Semaphore简介"
 date:   2023-03-07 14 16:22:00 +0800
-categories: jekyll update
+categories: Automatic
 ---
 Semaphore是一个ansible GUI系统，它可以提供一个可视化的界面，用于执行playbook，查看任务执行状态，并且提供简单的认证授权功能。除了GUI功能之外，它还提供一套API，可以通过API来控制任务执行，方便我们开发扩展的应用或者和已有的管控平台对接。
 # 安装配置

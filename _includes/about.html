@@ -13,35 +13,75 @@
             <li>GitHub：<a href="{{ site.github_url }}">{{ site.github_url }}</a></li>
         </ul> -->
 
-        <h2>谋生本领</h2>
+        <h2>技能</h2>
 
-        {% if site.skill_back_keywords %}
+        {% if site.skill_ops_keywords %}
         <div class="panel panel-default">
             <div class="panel-heading">
                 <h3 class="panel-title">运维</h3>
             </div>
             <div class="panel-body">
-                {% for keyword in site.skill_back_keywords %}
+                {% for keyword in site.skill_ops_keywords %}
                 <button class="btn btn-default" type="button">{{ keyword }}</button>
                 {% endfor %}
             </div>
         </div>
         {% endif %}
 
-        {% if site.skill_front_keywords %}
+        {% if site.skill_cloud_keywords %}
         <div class="panel panel-default">
             <div class="panel-heading">
                 <h3 class="panel-title">Cloud</h3>
             </div>
             <div class="panel-body">
-                {% for keyword in site.skill_front_keywords %}
+                {% for keyword in site.skill_cloud_keywords %}
                 <button class="btn btn-default" type="button">{{ keyword }}</button>
                 {% endfor %}
             </div>
         </div>
         {% endif %}
 
-        <h2>业余爱好</h2>
+        {% if site.skill_dev_keywords %}
+        <div class="panel panel-default">
+            <div class="panel-heading">
+                <h3 class="panel-title">Cloud</h3>
+            </div>
+            <div class="panel-body">
+                {% for keyword in site.skill_dev_keywords %}
+                <button class="btn btn-default" type="button">{{ keyword }}</button>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        {% if site.skill_db_keywords %}
+        <div class="panel panel-default">
+            <div class="panel-heading">
+                <h3 class="panel-title">Cloud</h3>
+            </div>
+            <div class="panel-body">
+                {% for keyword in site.skill_db_keywords %}
+                <button class="btn btn-default" type="button">{{ keyword }}</button>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        {% if site.skill_bigdata_keywords %}
+        <div class="panel panel-default">
+            <div class="panel-heading">
+                <h3 class="panel-title">Cloud</h3>
+            </div>
+            <div class="panel-body">
+                {% for keyword in site.skill_bigdata_keywords %}
+                <button class="btn btn-default" type="button">{{ keyword }}</button>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+
+        <!-- <h2>业余爱好</h2>
 
         {% if site.skill_bigdata_keywords %}
         <div class="panel panel-default">
@@ -67,7 +107,7 @@
                 {% endfor %}
             </div>
         </div>
-        {% endif %}
+        {% endif %} -->
 
     </div>
 
