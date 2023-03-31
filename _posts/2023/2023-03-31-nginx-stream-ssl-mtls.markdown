@@ -106,7 +106,7 @@ stream {
 
 此处我们采用自签名证书，签发的脚本如下：
 
-```ini
+```shell
 function create(){
 HOST=$1
 DAY=$2
@@ -153,11 +153,14 @@ curl -so /dev/null -w "%{http_code}" https://web.example.com/ -k
 ![](https://f.003721.xyz/2023/03/a62cbce45d8b9d1ab8d512d84f3619c9.png)
 
 发现功能都正常.这里我们并没有在B机的Nginx中将web.example.com 转成http，而是直接通过curl去访问A机的https服务，并通过curl的-k指令去绕过证书安全性校验。q如果不想用-k参数，可以带上A机的ca证书来访问：
-```
+
+```shell
 curl -so /dev/null --cacert /pathtoserverca/ca.crt  -w "%{http_code}" https://web.example.com/
 ```
+
 上面这个指令可用的前提是web.example.com这个域名能解析到A机ip，也就是10.0.92.10，在测试环境上我们可以通过在B机的/etc/hosts增加类似如下的记录来实现：
-```
+
+```shell
 10.0.92.10 web.example.com
 ```
 
@@ -165,7 +168,8 @@ curl -so /dev/null --cacert /pathtoserverca/ca.crt  -w "%{http_code}" https://we
 
 
 当然我们也可以在B机增加如下配置，将https offload成http，然后直接访问http。
-```
+
+```ini
     server {
         listen 50003;
         proxy_ssl on;
@@ -181,7 +185,8 @@ curl -so /dev/null --cacert /pathtoserverca/ca.crt  -w "%{http_code}" https://we
 `curl -so /dev/null -w "%{http_code}" http://127.0.0.1:50003`
 
 我们关注下A机上的配置文件，首先是如下配置块：
-```
+
+```ini
 server {
 listen 443;
 ssl_preread on;
@@ -195,7 +200,8 @@ proxy_pass 这个配置是ngx_stream_proxy_module模块的配置。
 ngx_stream_proxy_module可以对TCP、UDP或者linux 的sockets的数据流做反向代理。proxy_pass 参数指定了后端的地址，这里跟着的是个变量$proxy_pass_target。
 
 我们再来看看下面这段配置:
-```
+
+```ini
 map_hash_bucket_size 64;
 map $ssl_preread_server_name $proxy_pass_target {
 
@@ -205,6 +211,7 @@ web.example.com 127.0.0.1:30003;
 default 127.0.0.1:65535;
 }
 ```
+
 这段配置用到的模块是ngx_stream_map_module。map模块用于设置两个变量之间的映射关系。这个例子中，我们是根据$ssl_preread_server_name这个变量的取值来确认$proxy_pass_target的值。
 
 map_hash_bucket_size设置的是hash的bucket的大小，这个值一般设置成和CPU的cache size一致，也就是64.
@@ -215,8 +222,7 @@ Nginx在对TCP/UDP会话处理时，有如下一些阶段：Post-accept，Pre-ac
 
 在这个配置中，ssh1.example.com是映射到127.0.0.1:30001，也就是说当我们ssl_preread_server_name取到ssh1.example.com值时，ngx_stream_proxy_module的proxy_pass会将我们的连接转发到127.0.0.1:30001。这个127.0.0.1:30001在下面这个server配置块中定义：
 
-```
-
+```ini
 server {
 listen 127.0.0.1:30001 ssl;
 ssl_certificate /etc/nginx/ssl/example.com/server.crt;
@@ -224,13 +230,12 @@ ssl_certificate_key /etc/nginx/ssl/example.com/server.key;
 ssl_protocols TLSv1 TLSv1.1 TLSv1.2 TLSv1.3;
 proxy_pass 192.168.121.21:22;
 }
-
 ```
 这个配置块是一个典型的ngx_stream_ssl_module配置，ssl_certificate指定了server的证书，ssl_certificate_key是对应的secret key文件。ssl_protocols则指定了支持的SSL协议版本。
 
 ngx_stream_ssl_module实现了SSL的offload，或者说终结了SSL，后端是透明的TCP/UDP端口.当然我们这里的22端口其实也是加密的通道，不过这个加密就和nginx无关， 对于nginx来说它只是一个普通的tcp流。 下面这个30003转发的后端是8080端口，这个可以更清晰的看出后端是普通TCP端口：
 
-```
+```ini
 server {
 listen 127.0.0.1:30003 ssl;
 ssl_certificate /etc/nginx/ssl/example.com/server.crt;
@@ -242,7 +247,7 @@ proxy_pass 192.168.121.23:8080;
 
 我们上面提到的模块，很多都不是默认的编译参数，需要在编译中开启对应选项，我们可以通过nginx -V检查我们的版本是不是已经支持了这些模块:
 
-```
+```shell
 /# nginx -V
 nginx version: nginx/1.23.1
 built by gcc 10.2.1 20210110 (Debian 10.2.1-6)
@@ -253,7 +258,7 @@ configure arguments: --prefix=/etc/nginx --sbin-path=/usr/sbin/nginx --modules-p
 
 我们再来分析下B机上的Nginx配置。由于服务端的端口是被套了一层SSL，因此我们访问这些服务需要通过ssl协议。对于https来说没什么问题，192.168.121.23:8080被a机nginx反向代理之后由于套上了SSL，等效于https。这就是为什么我们一开始可以通过curl 指令的https直接访问到192.168.121.23:8080的服务。而对于ssh协议，我们需要一个中间人来做终结这个SSL，这就是为什么我们引入如下配置:
 
-```
+```ini
 server {
 listen 50001;
 proxy_ssl on;
@@ -271,7 +276,8 @@ proxy_pass 10.0.92.10:443;
 这段配置中其实有两个冗余的参数，就是ssl_certificate和ssl_certificate_key。由于listen中并没有加ssl后缀，因此这段server配置启动的监听端口是普通的TCP端口，无需加SSL，这两个选项是无效的，我们将它们去除，整个功能是不受影响的。
 
 所以整改后的B机配置如下所示：
-```
+
+```ini
 stream {
 server {
 listen 50001;
@@ -333,7 +339,7 @@ mTLS并不神秘，我们日常使用的kubectl其实就用到了mTLS。
 
 如果A机的证书是可信的CA签发的，B机自然是能信任它，但是我们前面配置时，采用的是自签名的方式，因此B机如果没有提前导入A机的CA证书，是不能信任A机的证书，这就是为什么我们通过curl 访问A机https时，不指定CA证书，并且不加-k选项绕过校验，访问是会失败的。如果我们希望B机的Nginx同样需要通过指定CA来校验A机是可信的，我们可以使用ngx_stream_proxy_module的proxy_ssl_verify相关参数来实现这个功能，我们在B机的nginx配置中加入如下配置：
 
-```
+```ini
 proxy_ssl_verify on;
 proxy_ssl_trusted_certificate /etc/nginx/ssl/ca_for_a.crt;
 proxy_ssl_verify_depth 6;
@@ -342,7 +348,8 @@ proxy_ssl_verify_depth 6;
 proxy_ssl_verify 为on时，代表我们需要校验A机是否可信；proxy_ssl_trusted_certificate 设置的是用于校验对端证书的CA，这里的ca_for_a.crt就是我们在A机上创建的自签名证书中的CA； proxy_ssl_verify_depth 定义的是对端证书链的深度，如果对端证书不是由根证书直接签发，经过了若干intermediate CA，这里的值就要适度设置下。
 
 修改后B机的配置如下：
-```
+
+```ini
 stream {
 server {
 listen 50001;
@@ -374,7 +381,7 @@ proxy_pass 10.0.92.10:443;
 
 如果这时候有个机器冒出来，声称自己就是A机，可以提供这个nginx服务，我们如何从真假大圣中辨别出谁是六耳猕猴呢？这里我们可以尝试把B机的/etc/nginx/ssl/ca_for_a.crt修改成其它CA文件，也就是让B机的proxy_ssl_trusted_certificate和A机的证书不匹配。这样我们再次测试时，会得到如下的失败结果：
 
-```
+```shell
 $ ssh -p 50002 xxx@127.0.0.1
 kex_exchange_identification: read: Connection reset by peer
 ```
@@ -385,7 +392,7 @@ kex_exchange_identification: read: Connection reset by peer
 
 为了完成mTLS流程，我们需要在两边的nginx都做配置，首先是B机上的Nginx，我们需要在ngx_stream_ssl_module模块中增加proxy_ssl_certificate和proxy_ssl_certificate_key两个参数，用于指定同A机进行认证的证书文件。具体配置如下：
 
-```
+```ini
 stream {
 server {
 listen 50001;
@@ -440,7 +447,7 @@ off选项是默认值，也就是默认不开启对客户端的证书校验。
 
 根据上面的分析，对于A机的Nginx，我们有了如下的mTLS配置：
 
-```
+```ini
 stream {
 map_hash_bucket_size 64;
 map $ssl_preread_server_name $proxy_pass_target {
@@ -506,7 +513,7 @@ proxy_pass 192.168.121.23:8080;
 
 我们再重新看下A机的Nginx配置，这个配置还是比较复杂的，套了两层的反向代理：第一层通过SSL preread取到server name之后，映射到下面一层反代。第二次反代上实现了SSL的termination。既然我们每个请求都要在第二层做SSL/TLS的卸载，我们是不是也可以在第一层直接把它offload了呢？于是对于A机的Nginx，我们有如下这个配置：
 
-```
+```ini
 stream {
 map_hash_bucket_size 64;
 
@@ -538,7 +545,7 @@ proxy_pass $proxy_pass_target;
 
 受上面案例启发，我们也可以部署一个nginx，通过反向代理实现这个功能。https的反向代理其实我们用得很多，一般都是7层反代，这就需要在nginx上配置域名的证书，这些公网API并不是我们运营的，他们也不可能把私钥发给我们，7层代理方式也就走不通。这时候我们可以用上面提到的ssl_preread，这种模式并没有对SSL做卸载，也就不需要配置私钥和key，我们只要获取到$ssl_preread_server_name就可以做分域名的转发：
 
-```
+```ini
 map_hash_bucket_size 64;
 map $ssl_preread_server_name $proxy_pass_target {
 
@@ -557,20 +564,20 @@ proxy_pass $proxy_pass_target;
 
 在DMZ机器上部署这个nginx之后，我们在客户机上手工将bing.domaina.com和oapi.dingtalk.com通过host记录指向DMZ机器，然后调用相关api，发现没有获得正确的结果:
 
-```
+```shell
 curl https://oapi.dingtalk.com
 curl: (35) schannel: failed to receive handshake, SSL/TLS connection failed
 ```
 
 检查nginx日志，发现如下日志：
 
-```
+```shell
 2023/03/17 08:19:45 [error] 23#23: *1 no resolver defined to resolve oapi.dingtalk.com, client: 10.xx.xx.xx, server: 0.0.0.0:443, bytes from/to client:0/0, bytes from/to upstream:0/0
 ```
 
 于是我们修正下配置,增加dns解析配置：
 
-```
+```ini
 resolver 223.5.5.5 valid=300s;
 resolver_timeout 10s;
 
@@ -591,7 +598,7 @@ proxy_pass $proxy_pass_target;
 
 这次可以正常获得结果:
 
-```
+```shell
 curl https://oapi.dingtalk.com
 {"errcode":404,"errmsg":"请求的URI地址不存在"}
 ```
@@ -601,7 +608,11 @@ curl https://oapi.dingtalk.com
 参考文档：
 
 <http://nginx.org/en/docs/stream/ngx_stream_core_module.html>
+
 <http://nginx.org/en/docs/stream/ngx_stream_proxy_module.html>
+
 <http://nginx.org/en/docs/stream/ngx_stream_ssl_module.html>
+
 <http://nginx.org/en/docs/stream/ngx_stream_map_module.html>
+
 <http://nginx.org/en/docs/stream/ngx_stream_ssl_preread_module.html>
