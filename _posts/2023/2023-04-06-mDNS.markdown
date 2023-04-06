@@ -1,0 +1,43 @@
+---
+layout: post
+title:  "mDNS实现本地主机发现"
+date:   2023-04-06 19:57:00 +0800
+category: Linux
+---
+# 简介
+mDNS，也就是Multicast DNS，是一种多播域名系统，用于在没有本地域名服务器的小型网络中解析主机名到IP地址。它是一种零配置网络服务，使用和DNS基本相同的编程接口、数据包格式和操作语义。
+
+mDNS的工作原理是：当一个mDNS客户端需要解析一个主机名时，它会发送一个IP多播查询消息，询问拥有该主机名的主机。目标主机会回复一个多播消息，包含它的IP地址。网络中的所有主机都可以使用这个信息来更新它们的mDNS缓存。任何主机都可以通过发送一个生存时间（TTL）为零的响应包来放弃对一个主机名的声明。
+
+默认情况下，mDNS只解析以.local为顶级域名的主机名。
+
+# Ubuntu下启用mDNS
+Ubuntu下可以通过如下指令安装并启动mDNS:
+
+```shell
+apt install avahi-daemon
+systemctl enable --now avahi-daemon
+```
+
+在ubuntu上安装avahi-daemon时，会自动将mdns的客户端libnss-mdns也安装上。因此在安装了avahi-daemon服务的机器上可以直接查询mDNS。
+
+# Centos上启用mDNS
+Centos8上可以用如下指令安装并启用mDNS:
+
+```shell
+dnf install avahi
+systemctl enable --now avahi-daemon
+```
+和Ubuntu不同的是，Centos上启动avahi-daemon后，并不意味着本机也可以查询其它机器的mDNS记录，它的mDNS客户端需要单独安装,并且这个客户端是在epel上的:
+
+```shell
+dnf install epel-release
+dnf install nss-mdns
+```
+# 防火墙配置
+avahi-daemon监听在udp 5353端口，因此需要确保防火墙已经放通了该端口。
+
+可以通过如下指令检测跨主机的udp端口是否可达:
+```shell
+nc -u -v -z hostIP UdpPort
+```
