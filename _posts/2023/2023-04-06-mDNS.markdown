@@ -41,3 +41,6 @@ avahi-daemon监听在udp 5353端口，因此需要确保防火墙已经放通了
 ```shell
 nc -u -v -z hostIP UdpPort
 ```
+# 基于mDNS的查询案例
+假设我们有两台机器，主机名分别为webserver,dbserver.这两台机器都启动了avahi-daemon服务，并且都安装了nss-mdns。在webserver机器上，通过`ping dbserver.local`可以正常获取到dbserver的ip。同样，在dbserver上，`ping webserver.local`也可以获取到webserver的ip。通过mDNS我们可以在没用对局域网内的各个主机的/etc/hosts上配置其它主机的host信息的前提下，依然达到能解析其它机器ip地址的效果。
+
