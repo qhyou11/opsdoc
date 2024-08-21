@@ -1,0 +1,123 @@
+---
+layout: post
+title:  "LVM信息丢失问题"
+date:   2024-08-21 12:00:07 +0800
+category: Linux
+---
+# 故障现象
+登录某台主机，准备通过lvm在上面挂一个新的文件系统。执行vgdisplay后，发现非rootvg的那个vg不见了。执行lvdisplay和pvdisplay也看不到相关的设备。
+通过df -h 可以发现该vg下的lv都正常被挂载，而且可以正常读写，lsblk也能看到这些目录。
+
+# 故障处理
+尝试执行vgscan，无法找到被隐藏的这个vg。
+执行lvm后，进入交互界面：
+```bash
+$lvm
+lvm> help
+  Available lvm commands:
+  Use 'lvm help <command>' for more information
+
+  config          Display and manipulate configuration information
+  devtypes        Display recognised built-in block device types
+  dumpconfig      Display and manipulate configuration information
+  formats         List available metadata formats
+  help            Display help for commands
+  fullreport      Display full report
+  lastlog         Display last command's log report
+  lvchange        Change the attributes of logical volume(s)
+  lvconvert       Change logical volume layout
+  lvcreate        Create a logical volume
+  ...
+```
+在命令行下执行vgck，然后再执行vgs，lvs或者lvdisplay，都能正常查看到故障vg。只要执行vgdisplay，这个vg就又会被隐藏。
+执行yum install lvm2，升级了这个软件包，发现问题解决。
+
+
+# 关联问题
+redhat9以上的版本存在如下问题
+[Default use_devicesfile value results in non bootable system after upgrade to 9.2 or later - Red Hat Customer Portal](https://access.redhat.com/solutions/7014295)
+
+## Environment
+
+- Red Hat Enterprise Linux 9
+- LVM2
+    - `use_devicesfile=1` in `/etc/lvm/lvm.conf` (default value in RHEL 9 is '1':enabled)
+
+## Issue
+
+- The system fails to boot and drops to maintenance mode when the default `use_devicefiles` value is set and upgrading from Red Hat Enterprise Linux 9
+
+## Resolution
+
+- We have identified this issue as a bug and have filed [a private Bugzilla ticket 2208342](https://bugzilla.redhat.com/show_bug.cgi?id=2208342) for further action by our Engineering team.
+- If you are affected by this issue, we encourage you to open a support case to raise visibility on this bug.
+- The [timeframe for Bugzilla support cases](https://access.redhat.com/solutions/526153) is different from typical support cases and are nominally outside of Service Level Agreement update times.
+- Either fix the contents, or disable use, of `/etc/lvm/devices/system.devices`
+    - To disable the use of the LVM2 `system.devices` cache file, add `use_devicesfile=0` in `/etc/lvm/lvm.conf` using rescue mode.
+    - To fix the contents of `system.devices`:
+        - 1. Remove any/all the problematic device lines in `/etc/lvm/devices/system.devices` file
+        - 2. Add the devices back into the file
+        - 3. Verify with LVM command
+        - 4. Reboot the system
+        - See [Diagnostics](https://access.redhat.com/solutions/7014295#DIAGS) for further details.
+
+> > > [Raw](https://access.redhat.com/solutions/7014295#)
+> > > 
+> > > ```
+> > > 
+> > >   # lvmdevices --delpvid xxxxxxxxxxxxxxxxxxxxxxxxxxxxeMWc         # 1. Remove bad entries by PVID (UUID)
+> > >     -or- 
+> > >   # lvmdevices --deldev sdb                                       # 1. Removed bad entries by DEVNAME
+> > >     -or-                                                          # 1. Remove the whole file
+> > >   # mv /etc/lvm/devices/system.devices /etc/lvm/devices/system.devices.$(date +%Y%m%d.%H%M%S)
+> > >                               
+> > >   # vgimportdevices -a                                            # 2. Add back in all missing devices    
+> > >     -or-               
+> > >   # lvmdevices --adddev /dev/sdb                                  # 2. Add back in individual devices
+> > >                                                              
+> > >   # pvs                                                           # 3. Verify system.devices issue(s) corrected
+> > > 
+> > >   # reboot                                                        # 4. Reboot the system
+> > > ```
+
+- See RHEL 9 documentation "[14.1.2. Adding devices to the system.devices file](https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/9/html/configuring_and_managing_logical_volumes/limiting-lvm-device-visibility-and-usage_configuring-and-managing-logical-volumes#adding-devices-to-the-system-devices-file_the-lvm-devices-file)" within [Configuring and managing logical volumes](https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/9/html/configuring_and_managing_logical_volumes/index) for more information on `system.devices` file. it's format and use.
+    
+- Additional reference information is available via the `man pages` and then build-in documentation within the `/etc/lvm/lvm.conf` file.
+    
+- Related/similar issues with `system.devices` file use in RHEL 9:
+    
+    - _["LVM messages "Devices file PVID last seen on /dev/sda not found" in RHEL 9 for IDTYPE=devname"](https://access.redhat.com/solutions/6889951)_
+    - _["Default use_devicesfile value results in non bootable system after upgrade to RHEL 9"](https://access.redhat.com/solutions/7014295)_ (use_devicesfile option changes)
+    - _["A storage move/clone/migration may cause LVM 'Devices file sys_wwid last seen on not found'"](https://access.redhat.com/solutions/7025698)_ (device wwids change)
+    - _["LVM messages "Devices file PVID last seen on /dev/sda not found" in RHEL 9 for IDTYPE=."](https://access.redhat.com/solutions/7029161)_
+    - _["VMware guest looses access to one or more LVM when device WWIDs enabled in hypervisor for RHEL 9 guest"](https://access.redhat.com/solutions/7041578)_
+    - _["WARNING: adding device /dev/sdX with PVID which is already used for /dev/sdX"](https://access.redhat.com/solutions/7038456)_
+
+## Diagnostic Steps
+
+1. Install Red Hat Enterprise Linux version 9.1  
+2. Upgrade it to Red Hat Enterprise Linux version 9.2  
+3. The system drops to maintenance mode  
+4. The system devices file does not contain all PV's.
+
+[Raw](https://access.redhat.com/solutions/7014295#)
+
+```
+# pvs   
+Reloading config files  
+Devices file sys_wwid <wwd> PVID <pv_uuid> last seen on /dev/N not found.   
+Reloading config files
+
+```
+
+- **Product(s)**
+ - [Red Hat Enterprise Linux](https://access.redhat.com/search?q=Red+Hat+Enterprise+Linux&documentKind=Article%26Solution)
+
+- **Component**
+ - [lvm2](https://access.redhat.com/search?q=lvm2&documentKind=Article%26Solution)
+
+- **Tags**
+ - [lvm](https://access.redhat.com/search?q=lvm&documentKind=Article%26Solution)
+ - [lvm2](https://access.redhat.com/search?q=lvm2&documentKind=Article%26Solution)
+
+This solution is part of Red Hat’s fast-track publication program, providing a huge library of solutions that Red Hat engineers have created while supporting our customers. To give you the knowledge you need the instant it becomes available, these articles may be presented in a raw and unedited form.

@@ -1,0 +1,93 @@
+---
+layout: post
+title:  "adb调试"
+date:   2024-08-21 12:00:03 +0800
+category: Linux
+---
+# 安卓设备开启ADB
+首先需要在【设置】>【设备首选项】>【关于】中找到build连续按多次版本号，开启开发者模式。
+然后在【设备首**选项**】>【开发人员选项】中打开USB调试开关。
+# 下载adb工具
+下载地址如下：
+https://developer.android.com/tools/releases/platform-tools#downloads
+解压即可使用。
+# adb操作
+## 启动adb server
+```bash
+./adb start-server
+```
+## 停止adb server
+```bash
+./adb kill-server
+```
+## 连接设备
+```bash
+./adb connect device_ip
+```
+需要保证device_ip对应的5555端口可达。
+## 查看已连接设备
+```bash
+./adb devices
+```
+## 登陆交互式shell
+```bash
+./adb shell
+```
+如果shell后面没有接具体指令，就是交互式，否则执行传入的指令后退出。
+### 卸载应用
+以下应用在shell下执行。
+```bash
+pm uninstall -k –user 0 <package name>
+```
+查询已安装的package name：
+```bash
+pm list packages
+```
+
+## 远程安装apk
+```bash
+./adb install local.apk
+```
+local.apk是在执行adb指令的客户端机器上。
+## 文件上传下载
+上传文件
+```bash
+./adb push localfile remotefile
+```
+下载文件
+```bash
+./adb pull remotefile localfile
+```
+## 重启设备
+### 正常的设备重启
+```bash
+./adb reboot
+```
+### 重启到恢复模式
+```bash
+./adb reboot recovery
+```
+### 重启到Bootloader模式
+```bash
+./adb reboot bootloader
+```
+### 重启到fastboot模式(待验证)
+```bash
+./adb reboot fastboot
+```
+### 重启到update模式(待验证)
+```bash
+./adb reboot update
+```
+# 端口转发
+## 正向转发
+将设备内的端口转到adb客户端所在的机器：
+```bash
+adb forward tcp:6100 tcp:7100
+```
+将手机上的7100监听端口转发到PC上的6100端口。
+## 反向转发
+```bash
+adb reverse tcp:80 tcp:3000
+```
+在手机上访问80端口，数据将被转发到PC上的3000端口。

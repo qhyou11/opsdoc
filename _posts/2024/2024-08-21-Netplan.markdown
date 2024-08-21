@@ -1,0 +1,113 @@
+---
+layout: post
+title:  "Netplan"
+date:   2024-08-21 12:00:12 +0800
+category: Linux
+---
+# 简介
+Netplan 是一个用于配置 Linux 系统网络设置的工具。它提供了一个简化的配置语言，方便用户轻松地定义网络接口、IP 地址、网关、DNS 设置等。
+Netplan的一些基本要素：
+1. **配置文件：** Netplan 使用 YAML 格式的配置文件，通常存储在 `/etc/netplan/` 目录下。文件的命名约定为 `01-netcfg.yaml` 这种风格。
+2. **Renderer：** Netplan 支持不同的渲染器（renderer），例如 NetworkManager 和 systemd-networkd。渲染器是实际执行配置的网络管理工具。
+3. **版本：** 常用的Netplan 配置文件的版本号是2。版本 2 文件使用 `network` 关键字作为顶层关键字，并包含 `ethernets`、`bridges`、`wifis` 等部分。
+4. **ethernets：** 在 `ethernets` 部分，可以定义以太网接口的配置，包括 IP 地址、子网掩码、网关等。
+5. **bridges：** 在 `bridges` 部分，可以定义网络桥接口的配置，用于连接多个网络设备。
+6. **wifis：** 在 `wifis` 部分，可以定义无线网络接口的配置，包括 SSID、密码、安全协议等。
+7. **应用更改：** 在修改配置文件后，可以使用 `sudo netplan apply` 命令来使配置生效。
+8. **验证配置：** 使用 `sudo netplan try` 命令可以验证配置是否正确。这个命令会尝试应用配置，如果遇到错误，会在一定时间内自动回滚。
+9. **其他选项：** Netplan 还支持其他一些高级功能，如 VLAN 配置、物理接口绑定（bonding）、MAC 地址随机化等。
+# 工作方式
+执行`netplan apply`可以使/etc/netplan下的配置生效。
+系统启动时，也会通过systemd的generator生成netplan的配置到对应的renderer。
+# 配置
+同一个配置如果出现在多个文件里，按照文件名的字母顺利排序依次加载，后面加载的配置会覆盖前面的。比如有三个文件 30-eth0.yaml，50-cloud-init.yaml,60-eth0.yaml同时设置了dhcp4为true，最终生效的是60-eth0.yaml.
+## 基础的ip和默认路由手工设置
+```yaml
+# This file is generated from information provided by the datasource.  Changes
+# to it will not persist across an instance reboot.  To disable cloud-init's
+# network configuration capabilities, write a file
+# /etc/cloud/cloud.cfg.d/99-disable-network-config.cfg with the following:
+# network: {config: disabled}
+network:
+    version: 2
+    ethernets:
+        eth0:
+          addresses: [192.168.1.82/24]
+          routes:
+           - to: default
+             via: 192.168.1.1
+```
+## bridge中配置macaddress
+示例
+```yaml
+network:
+      version: 2
+      renderer: NetworkManager
+      ethernets:
+         eno1:
+          dhcp4: no
+          dhcp6: no
+         enp4s0:
+          dhcp4: yes
+          dhcp4-overrides:
+             use-routes: no
+      bridges:
+        lxdphbr0:
+          interfaces: [eno1]
+          dhcp4: yes
+          parameters:
+                stp: true
+                forward-delay: 4
+          mtu: 1500
+          macaddress: 52:22:29:xx:xx:xx
+          dhcp4-overrides:
+              use-routes: no
+          routes:
+              - to: default
+                via: 10.xx.xx.xx
+
+```
+
+## 禁用dhcp获取的默认路由
+```yaml
+# cat 50-cloud-init.yaml
+# This file is generated from information provided by the datasource.  Changes
+# to it will not persist across an instance reboot.  To disable cloud-init's
+# network configuration capabilities, write a file
+# /etc/cloud/cloud.cfg.d/99-disable-network-config.cfg with the following:
+# network: {config: disabled}
+network:
+    version: 2
+    ethernets:
+        enp0s3:
+            dhcp4: true
+            dhcp4-overrides: {
+                               use-routes: false
+                             }
+
+```
+## 手工设置默认路由
+```yaml
+# cat 50-cloud-init.yaml 
+# This file is generated from information provided by the datasource.  Changes
+# to it will not persist across an instance reboot.  To disable cloud-init's
+# network configuration capabilities, write a file
+# /etc/cloud/cloud.cfg.d/99-disable-network-config.cfg with the following:
+# network: {config: disabled}
+network:
+    version: 2
+    ethernets:
+        enp0s3:
+........
+            routes:
+              - to: default
+                via: 10.45.18.105
+```
+## 禁用ra
+```yaml
+network:
+    version: 2
+    ethernets:
+        eth0:
+          accept-ra: false
+```

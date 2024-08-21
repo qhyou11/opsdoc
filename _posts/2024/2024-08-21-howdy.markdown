@@ -1,0 +1,35 @@
+---
+layout: post
+title:  "howdy"
+date:   2024-08-21 12:00:05 +0800
+category: Linux
+---
+最近对Archlinux做了一个滚动更新之后，发现人脸识别功能不行了。手工执行howdy test和howdy add 指令都会报错：
+```bash
+╰─➤  sudo howdy -U xxxx add
+NOTICE: Each additional model slows down the face recognition engine slightly
+Press Ctrl+C to cancel
+
+Adding face model for the user cloud
+Enter a label for this new model [Model #13] (max 24 characters): ssss
+[ WARN:0@2.736] global cap_gstreamer.cpp:2839 handleMessage OpenCV | GStreamer warning: Embedded video playback halted; module source reported: Could not read from resource.
+[ WARN:0@2.737] global cap_gstreamer.cpp:1698 open OpenCV | GStreamer warning: unable to start pipeline
+[ WARN:0@2.737] global cap_gstreamer.cpp:1173 isPipelinePlaying OpenCV | GStreamer warning: GStreamer: pipeline have not been created
+
+Please look straight into the camera
+Traceback (most recent call last):
+  File "/usr/bin/howdy", line 95, in <module>
+    import cli.add
+  File "/usr/lib/security/howdy/cli/add.py", line 157, in <module>
+    face_locations = face_detector(gsframe, 1)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^
+RuntimeError: Unsupported image type, must be 8bit gray or RGB image.
+```
+网上检索了下，发现这是由于numpy升级到2.0版本，而Dlib没有适配导致的。
+尝试降级numpy，问题解决：
+```bash
+sudo downgrade python-numpy
+```
+
+参考链接：
+[python - dlib face detection error : Unsupported image type, must be 8bit gray or RGB image - Stack Overflow](https://stackoverflow.com/questions/48764485/dlib-face-detection-error-unsupported-image-type-must-be-8bit-gray-or-rgb-ima)
