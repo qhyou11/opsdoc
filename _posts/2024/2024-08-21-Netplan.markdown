@@ -6,6 +6,7 @@ category: Linux
 ---
 # 简介
 Netplan 是一个用于配置 Linux 系统网络设置的工具。它提供了一个简化的配置语言，方便用户轻松地定义网络接口、IP 地址、网关、DNS 设置等。
+
 Netplan的一些基本要素：
 1. **配置文件：** Netplan 使用 YAML 格式的配置文件，通常存储在 `/etc/netplan/` 目录下。文件的命名约定为 `01-netcfg.yaml` 这种风格。
 2. **Renderer：** Netplan 支持不同的渲染器（renderer），例如 NetworkManager 和 systemd-networkd。渲染器是实际执行配置的网络管理工具。
@@ -18,9 +19,12 @@ Netplan的一些基本要素：
 9. **其他选项：** Netplan 还支持其他一些高级功能，如 VLAN 配置、物理接口绑定（bonding）、MAC 地址随机化等。
 # 工作方式
 执行`netplan apply`可以使/etc/netplan下的配置生效。
+
 系统启动时，也会通过systemd的generator生成netplan的配置到对应的renderer。
+
 # 配置
 同一个配置如果出现在多个文件里，按照文件名的字母顺利排序依次加载，后面加载的配置会覆盖前面的。比如有三个文件 30-eth0.yaml，50-cloud-init.yaml,60-eth0.yaml同时设置了dhcp4为true，最终生效的是60-eth0.yaml.
+
 ## 基础的ip和默认路由手工设置
 ```yaml
 # This file is generated from information provided by the datasource.  Changes

@@ -6,6 +6,7 @@ category: Linux
 ---
  # 服务启停
 systemd-networkd是systemd中的一个服务，服务的启停及状态查看指令如下：
+
 ```bash
 systemctl start systemd-networkd
 systemctl stop systemd-networkd
@@ -15,6 +16,7 @@ systemctl status systemd-networkd
 # 服务迁移
 由于centos7已经接近维护的生命周期尾声,redhat 8 以上的redhat系OS已经不再支持systemd-networkd，现在迁移到systemd-networkd的一般是debian系的networking服务。
 首先在/etc/systemd/network中新增一个配置文件，假设为enp0s3.network:
+
 ```bash
 [Match]
 Name=enp0s3
@@ -29,15 +31,18 @@ RouteMetric=100
 RouteMetric=100
 ```
 将networking服务的配置文件重命名：
+
 ```bash
 mv /etc/network/interfaces /etc/network/interfaces_save
 mv /etc/network/interfaces.d /etc/network/interfaces.d_save
 ```
 启动systemd-networkd服务：
+
 ```bash
 systemctl start systemd-networkd
 ```
 此时可以查询下systemd-networkd对各个接口的接管状态：
+
 ```bash
 cloud@debian12:/etc/network$ networkctl 
 IDX LINK   TYPE     OPERATIONAL SETUP     
@@ -48,10 +53,12 @@ IDX LINK   TYPE     OPERATIONAL SETUP
 
 ```
 最后停止networking服务：
+
 ```bash
 systemctl stop networking
 ```
 如果需要持久化这个配置，可以enable systemd-networkd服务，disable networking服务：
+
 ```bash
 systemctl disable networking
 systemctl enable systemd-networkd
@@ -60,13 +67,17 @@ systemctl enable systemd-networkd
 # 配置文件
 ## 配置文件名
 systemd-networkd的配置文件名都是以.network作为后缀，其它后缀都被被忽略。这些.network配置文件可以从如下系统目录中加载:
+
 1. 系统默认配置：/lib/systemd/network 和 /usr/local/lib/systemd/network
 2. 非永久配置，一般是系统启动后由各种进程生成的动态配置文件：/run/systemd/network 目录
 3. 系统管理员维护的本地配置：/etc/systemd/network
+
 不管这些文件从哪个目录加载，所有的文件都按文件名排序加载。同名的配置文件则会互相覆盖，不同目录的同名文件有不同的优先级，/etc目录优先级最高，/run的优先级要高于/usr。
 此外，每个配置文件还可以有自己的.d 子目录，比如我们有个配置文件 test.network, 它的.d子目录就是test.network.d,子目录下的配置会覆盖对应的主配置文件。
+
 ## 配置章节
 systemd-networkd涉及到如下配置章节：
+
 1. MATCH
 2. LINK
 3. SR-IOV
@@ -117,17 +128,25 @@ systemd-networkd涉及到如下配置章节：
 48. QUICKFAIRQUEUEING
 49. QUICKFAIRQUEUEINGCLASS
 50. BRIDGEVLAN
+
 ## MATCH
 [Match] 章节用于确认当前的配置文件应用于哪种设备。对于某一个设备，哪个配置文件的[Match]先匹配到它，这个设备就有应用该配置文件里的配置，其他后续匹配到的配置文件都会被忽略。匹配规则可以根据：Name，Path，Host，SSID，MACAddress，Type等字段进行设置。
 
 ## NETWORK
 [Network]章节是我们常用的配置章节，可以配置：
+
 Description：设备描述
+
 DHCP：启用DHCPv4或者DHCPv6客户端。可用的参数值:
+
 "yes": 启用DHCPv4和DHCPv6
+
 "no": 默认值
+
 "ipv4": 只启用DHCPv4
+
 "ipv6": 只启用DHCPv6
+
 注意：SLACC的路由通告会自动触发DHCPv6，这种情况下，试图通过这个参数对DHCPv6的禁用是无效的。
 
 # 范例
@@ -197,6 +216,7 @@ UseGateway=false
 
 ## 配置 gre或者gretap
 gre或者gretap需要在两台设备上同时配置，remote和local地址互换。
+
 首先创建一个netdev:
 ```ini
 # cat /etc/systemd/network/21-gretaptest.netdev
@@ -220,6 +240,7 @@ Name=gretaptest
 Address=192.168.yyy.1/24
 ```
 最后在local ip对应的接口上增加tunnel配置，启动这个隧道：
+
 ```ini
 # cat /etc/systemd/network/50-enp0s3.network
 ...

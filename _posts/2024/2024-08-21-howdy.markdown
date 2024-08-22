@@ -26,6 +26,7 @@ Traceback (most recent call last):
 RuntimeError: Unsupported image type, must be 8bit gray or RGB image.
 ```
 网上检索了下，发现这是由于numpy升级到2.0版本，而Dlib没有适配导致的。
+
 尝试降级numpy，问题解决：
 ```bash
 sudo downgrade python-numpy

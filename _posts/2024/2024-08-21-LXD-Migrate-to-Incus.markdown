@@ -6,9 +6,13 @@ category: Linux
 ---
 # 背景
 2023年12月以后，[Linux Containers - Image server](https://images.linuxcontainers.org/) 逐渐收紧对lxd访问images服务器的限制，最终在2024年5月份之后，所有的lxd都无法使用这个镜像服务器。
+
 这种情况的出现，主要是由于lxd的归属权发生变更，linuxcontainers不再拥有控制权，而canonical主导了lxd的演进。部分lxd开发者和社区一起发起了incus分叉，替换了lxd。官方的通告指出，基于成本考虑linuxcontainers不愿意让lxd使用这个images服务器，只允许incus和lxc继续使用它。
+
 为了使用这个imags服务器，我们需要将lxd迁移到incus。
+
 当然，lxd也有应对策略，它提供了[LXD Images (canonical.com)](https://images.lxd.canonical.com/) 升级[Releases · canonical/lxd (github.com)](https://github.com/canonical/lxd/releases)里最新的lxc之后，lxd就可以使用`lxc image ls images:`的方式访问这个images服务器了。
+
 # 安装
 Ubuntu系统LTS版本目前还没在内置软件仓库中原生支持incus安装，需要通过Zabbly仓库安装这个应用。
 ## Zabbly配置方式
@@ -28,6 +32,7 @@ sub   rsa3072 2023-08-23 [E] [expires: 2025-08-22]
 
 ```
 确认公钥的指纹和“4EFC 5906 96CB 15B8 7C73 A3AD 82CC 8797 C838 DCFD”能匹配上。
+
 拷贝公钥证书：
 ```bash
 mkdir -p /etc/apt/keyrings/
@@ -97,22 +102,26 @@ Uninstall the LXD package? [default=no]: yes
     zpool create mypool /srv/blah.img -m none
     lxc storage create mypool zfs source=mypool
     ```
+
 因此迁移前务必做好系统备份。
 
 # 普通用户赋权
 迁移完成后，通过普通用户执行`incus list`指令会报错：
+
 ```bash
 # incus list
 Error: You don't have the needed permissions to talk to the incus daemon (socket path: /var/lib/incus/unix.socket)
 
 ```
 查看这个socket文件权限：
+
 ```bash
 # sudo ls -ltr /var/lib/incus/unix.socket                                
 srw-rw---- 1 root incus-admin 0 Feb 22 21:11 /var/lib/incus/unix.socket
 
 ```
 这个文件是incus-admin用户组，因此可以用如下指令授权:
+
 ```bash
 sudo usermod -aG incus-admin username 
 ```
@@ -121,10 +130,12 @@ sudo usermod -aG incus-admin username
 # 客户端及服务端设置
 ## 服务端
 配置服务端
+
 ```bash
 incus config set core.https_address :8443
 ```
 获取token
+
 ```bash
 # client的名称随意设置
 incus config trust add hmac
@@ -156,10 +167,12 @@ $ incus remote ls
 +-----------------+------------------------------------+---------------+-------------+--------+--------+--------+
 ```
 切换默认的remote：
+
 ```bash
 $ incus remote switch ut420
 ```
 现在就可以在客户端上看到其它主机的虚机或者容器：
+
 ```bash
 $ incus ls
 +-----------+---------+-----------------------------+---------------------------------------------------------+-----------+-----------+

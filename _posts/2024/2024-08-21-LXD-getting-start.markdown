@@ -37,14 +37,19 @@ lxd支持如下类型的存储：
 6. CephFS
 7. CephObject
 官方建议使用Btrfs或者ZFS，相比较而言ZFS更为稳定。
+
 存储创建的参考文档：
+
 https://documentation.ubuntu.com/lxd/en/latest/howto/storage_pools/
+
 比如通过如下方式创建一个zfs的存储：
+
 ```bash
 lxc storage create pool1 zfs
 ```
 创建的pool名称为pool1，这种方式创建出来的存储是一个loop文件，文件位置在`/var/snap/lxd/common/lxd/disks/pool1.img` 。loop 文件的方式无法指定文件存储的位置，默认都在lxd/disks/下面。
 也可以通过如下方式手工创建loop方式的zfs pool：
+
 ```bash
 truncate -s 50G /srv/blah.img
 zpool create mypool /srv/blah.img -m none
@@ -107,6 +112,7 @@ network:
           mtu: 1500
 ```
 systemd-networkd的配置也差不多，只要修改下renderer。
+
 然后就可以用这个lxdphbr0来创建网络，profile配置如下：
 ```yaml
 devices:
@@ -334,7 +340,7 @@ config:
 
     users:
       - name: ubuntu
-        passwd: "$6$iBF0eT1/6UPE2u$V66Rk2BMkR09pHTzW2F.4GHYp3Mb8eu81Sy9srZf5sVzHRNpHP99JhdXEVeN0nvjxXVmoA6lcVEhOOqWEd3Wm0"
+        passwd: "$6$iBF0eT1/6UPE2u$V66Rk2BMkR09pHTzW2F.nobodyknowxxxxxxxxxxxxxxxxx"
         lock_passwd: false
         groups: lxd
         shell: /bin/bash
@@ -347,6 +353,7 @@ devices:
 ```
 
 config部分增加user-data,设置带有sudo权限的ubuntu用户，密码是ubuntu。
+
 devices部分将cloud-init挂载上。
 ## 实例操作
 ### 实例访问

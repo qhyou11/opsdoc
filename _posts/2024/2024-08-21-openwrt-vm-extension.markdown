@@ -5,11 +5,16 @@ date:   2024-08-21 12:00:13 +0800
 category: Linux
 ---
 网上给了一些方法，主要是两个思路：
+
 一个是在系统安装后，增加一个硬盘，把这个硬盘作为外置overlay引入。 https://www.51it.wang/ll/1901 ；
+
 另外一个思路是从镜像入手，把镜像的空间扩大了，通过这个镜像创建的虚拟硬盘空间自然也变大。 https://macbruins.com/2011/11/15/expanding-x86-openwrt-root-partition/ 
 
+
 这里提供另外一个方案，既然我们的环境是虚拟机，可以把硬盘从原实例中detach出来，作为一个新硬盘加载到另外一个linux虚拟机上。
+
 挂载完成后，在linux虚机上可以通过growpart 扩展分区，再执行文件系统扩容。
+
 ```bash
 [root@alma287 ~]# yum install cloud-utils-growpart
 
