@@ -1,0 +1,26 @@
+---
+layout: post
+title:  "binlog2sql魔改"
+date:   2024-08-22 12:29:00 +0800
+category: Dev
+---
+binlog2sql是从大众点评DBA开源的binlog2sql fork过来，做了阿里云RDS魔改的SQL回滚工具，仓库地址如下：
+[qhyou11/binlog2sql: Parse MySQL binlog to SQL you want (github.com)](https://github.com/qhyou11/binlog2sql)
+
+点评原版的binlog2sql只支持从标准的MySQL中读取复制器里的binlog数据流生成回退SQL。我这边改造的版本支持从本地读取binlog文件，也支持从OSS直接读取binlog文件进行解析，并且针对阿里云RDS的数据库内核做了适配。
+
+这个魔改项目的起因是因为有一次同事找我，说他从云数据库上删了一批数据，希望帮他找回这个数据。这个事情解决本身不难，因为他找到我时，数据删除不到两小时。阿里云的DMS里的数据库开发有数据追踪功能，可以免费将两个小时内的数据追回。我担忧的是如果问题发生超过两个小时，这时候要找回数据就得给阿里云DMS充会员了。因此，我花了点时间了解了下这个数据追踪背后的逻辑，也就是binlog。
+
+通过检索我了解到点评的这个binlog2sql，但是它只能在线解析binlog数据，而阿里云RDS实例上保留的binlog时间不长，可能只有几个小时，长期的binlog都归档到OSS上，因此不太适合想回退较早数据的场景。
+
+因此，第一个脚本就出现了，也就是binlog2sql_local.py，binlog2sql_local调用binlog_file_reader里的函数，从binlog文件中读取数据，根据binlog的协议，解析出每一条binlog记录，并将记录组装成pymysqlreplication的格式，从而利用pymysqlreplication的解析能力继续解析SQL。
+在生成回退SQL时，做了一个pop_id的操作，阿里云RDS的内核和开源内核不同，它在表没有主键时，会自动生成一个以__dropped_col_开头的row_id字段，因此需要删除这个多余字段。
+
+binlog2sql_oss.py则是用于自动读取OSS上的文件。通过这种自动化，可以避免手工下载OSS上binlog日志文件到本地。其中OSS鉴权是通过主机上的role来获取的：提前配置一个RAM角色，使得这个角色能够访问OSS和RDS binlog文件的列表，并将这个RAM角色授予执行binlog2sql_oss的ECS主机。
+列举binlog需要两个权限点：
+```bash
+                "rds:ModifyBackupPolicy",
+                "rds:DescribeBinlogFiles"
+```
+
+当然，不管是离线处理文件，还是在线解析OSS文件，都是需要连接RDS，获取到表的各个字段定义信息。

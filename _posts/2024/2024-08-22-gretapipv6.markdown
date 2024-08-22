@@ -1,0 +1,78 @@
+---
+layout: post
+title:  "Gretap实现IPv6跨网分配"
+date:   2024-08-22 12:26:00 +0800
+category: Ops
+---
+
+
+客户端ip： 192.168.33.12
+
+服务端ip：192.168.35.5
+
+客户端和服务端三层可达。
+
+服务端建立gretap：
+
+```bash
+ip l a ngretap type gretap local 192.168.35.5 remote 192.168.33.12
+ip l set dev ngretap up
+```
+客户端建立gretap:
+
+```bash
+ip l a ngretap type gretap local 192.168.33.12 remote 192.168.35.5
+ip l set dev ngretap up
+```
+服务端上拨号，dhcpv6配置(/etc/wide-dhcpv6/dhcp6c.conf)如下：
+
+```text
+
+profile default
+{
+  information-only;
+
+  request domain-name-servers;
+  request domain-name;
+
+  script "/etc/wide-dhcpv6/dhcp6c-script";
+};
+
+interface pppoe_dial {
+        send ia-na 0;
+        request domain-name-servers, domain-name;
+        send rapid-commit;
+        send ia-pd 0;
+};
+
+id-assoc na 0 {};
+
+id-assoc pd 0 {
+        prefix ::/60 infinity;
+        prefix-interface ngretap {
+                sla-id 1;
+                sla-len 4;
+                ifid 1;
+        };
+};
+```
+/etc/radvd.conf:
+```text
+interface ngretap
+{
+        AdvSendAdvert on;
+
+        MinRtrAdvInterval 3;
+        MaxRtrAdvInterval 10;
+        AdvDefaultPreference low;
+        AdvHomeAgentFlag off;
+
+        prefix ::/64
+        {
+                AdvOnLink on;
+                AdvAutonomous on;
+                AdvRouterAddr off;
+        };
+
+};
+```

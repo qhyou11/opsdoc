@@ -1,0 +1,747 @@
+---
+layout: post
+title:  "Docker IPv6实践"
+date:   2024-08-22 12:25:00 +0800
+category: Ops
+---
+
+# 环境描述
+
+本文涉及的环境为两台虚拟机，一台是Ubuntu22.04 作为服务端（下文称之为U-Router），一台是AlmaLinux8作为验证的客户端（下文称之为A-Node）。U-Router作为路由器，向A-Node提供IPv6地址SLAAC服务。容器服务安装在A-Node上。具体的网络拓扑可以参照前导的第二篇和第三篇。
+
+# IPv6镜像仓库的使用
+
+docker hub官方提供了一个IPv6尝鲜版仓库,域名是`registry.ipv6.docker.com`。对于官方镜像，比如busybox，可以通过如下指令拉取：
+
+```bash
+docker pull registry.ipv6.docker.com/library/busybox:latest
+```
+
+如果是带名称空间的镜像，比如grafana/grafana，则可以用如下指令拉取：
+
+```bash
+docker pull registry.ipv6.docker.com/grafana/grafana:latest
+```
+
+拉下镜像之后，可以将它tag成常用的镜像名，方便后续使用：
+
+```bash
+docker tag registry.ipv6.docker.com/library/busybox:latest busybox:latest 
+```
+
+# 传统容器网络模式下IPv6配置
+
+## Host模式
+
+让容器支持访问IPv6地址的最简单方式就是通过容器的host模式。举例如下：
+
+```bash
+[root@h48 ~]# docker run -it --rm --net host busybox sh
+/ # ping  2400:3200:baba::1
+PING 2400:3200:baba::1 (2400:3200:baba::1): 56 data bytes
+64 bytes from 2400:3200:baba::1: seq=0 ttl=119 time=25.264 ms
+64 bytes from 2400:3200:baba::1: seq=1 ttl=119 time=25.525 ms
+64 bytes from 2400:3200:baba::1: seq=2 ttl=119 time=26.725 ms
+```
+
+## NAT模式
+
+NAT模式主要介绍三种容器访问公网IPv6的配置，唯一单播本地IPv6地址（ULA），全球单播地址（GUA）和自定义桥接网络，ULA和GUA实际上是同一种方式，只不过配置的IPv6地址段不一样。这三种配置模式下，容器访问公网其实都是通过SNAT实现，也就是docker配置中指定的`"ip6tables": true`。
+
+### ULA地址段方式
+
+首先需要修改/etc/docker/daemon.json:
+
+```bash
+[root@h48 ~]# cat /etc/docker/daemon.json
+{
+  "ipv6": true,
+  "fixed-cidr-v6": "fd00::/80",
+  "experimental": true,
+  "ip6tables": true
+}
+```
+
+重启docker服务:
+
+```bash
+systemctl restart docker
+```
+
+验证功能：
+
+```bash
+[root@h48 ~]# docker run -it --rm busybox ping 2400:3200:baba::1
+PING 2400:3200:baba::1 (2400:3200:baba::1): 56 data bytes
+64 bytes from 2400:3200:baba::1: seq=0 ttl=118 time=25.346 ms
+64 bytes from 2400:3200:baba::1: seq=1 ttl=118 time=25.780 ms
+64 bytes from 2400:3200:baba::1: seq=2 ttl=118 time=26.117 ms
+64 bytes from 2400:3200:baba::1: seq=3 ttl=118 time=26.245 ms
+^C
+--- 2400:3200:baba::1 ping statistics ---
+4 packets transmitted, 4 packets received, 0% packet loss
+round-trip min/avg/max = 25.346/25.872/26.245 ms
+[root@h48 ~]# docker run -it --rm busybox ip addr
+1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue qlen 1000
+    link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00
+    inet 127.0.0.1/8 scope host lo
+       valid_lft forever preferred_lft forever
+    inet6 ::1/128 scope host
+       valid_lft forever preferred_lft forever
+11: eth0@if12: <BROADCAST,MULTICAST,UP,LOWER_UP,M-DOWN> mtu 1500 qdisc noqueue
+    link/ether 02:x:x:x:00:02 brd ff:ff:ff:ff:ff:ff
+    inet 172.17.0.2/16 brd 172.17.255.255 scope global eth0
+       valid_lft forever preferred_lft forever
+    inet6 fd00::x:ac11:2/80 scope global flags 02
+       valid_lft forever preferred_lft forever
+    inet6 fe80::42:acff:fe11:2/64 scope link tentative
+       valid_lft forever preferred_lft forever
+```
+
+通过NAT方式，容器可以从fixed-cidr-v6里指定的网段中分配到ULA（fd00::x:ac11:2/80），容器访问公网IPv6是通过ip6tables或者nftables的nat模块实现的。启用了SNAT之后，docker在iptables/nftables中加入了如下规则：
+
+```bash
+[root@h48 ~]# nft list table ip6 nat
+table ip6 nat {
+        chain PREROUTING {
+                type nat hook prerouting priority dstnat; policy accept;
+                fib daddr type local counter packets 0 bytes 0 jump DOCKER
+        }
+
+        chain INPUT {
+                type nat hook input priority 100; policy accept;
+        }
+
+        chain POSTROUTING {
+                type nat hook postrouting priority srcnat; policy accept;
+                oifname != "docker0" ip6 saddr fd00::/80 counter packets 1 bytes 104 masquerade
+        }
+
+        chain OUTPUT {
+                type nat hook output priority -100; policy accept;
+                ip6 daddr != ::1 fib daddr type local counter packets 0 bytes 0 jump DOCKER
+        }
+
+        chain DOCKER {
+                iifne "docker0" counter packets 0 bytes 0 return
+        }
+}
+```
+
+### 默认桥接改GUA地址段
+
+我们可以通过将fixed-cidr-v6里的ULA地址块更新成和宿主机网卡获取到的GUA相同前缀的地址块，这样容器内也可以获取到公网IPv6地址：
+
+```bash
+[root@h48 docker]# cat daemon.json
+{
+  "ipv6": true,
+  "fixed-cidr-v6": "240e:x:x:55e0:0001::1/80",
+  "experimental": true,
+  "ip6tables": true
+}
+```
+
+这里特意把网段前缀改成/80，减少和网络上其他机器冲突的概率，同时宿主机也能根据这个较小的前缀设置正确的路由信息，将外部请求转到docker0接口上。
+
+```bash
+[root@h48 docker]# docker run  -itd -P --name=ipv6test ubuntu:22.04 /bin/bash 
+
+```
+
+```bash
+[root@h48 ~]# docker run  -itd -P --name=ipv6test ubuntu:22.04 /bin/bash
+f7806fc2e018cc0d41d26fa1b56e8f452da167faca52857eaefc3fe139a2b4b6
+[root@h48 ~]# docker exec -ti ipv6test bash
+root@f7806fc2e018:/# apt update
+......
+
+8 packages can be upgraded. Run 'apt list --upgradable' to see them.
+
+root@f7806fc2e018:/# apt install iproute2
+Reading package lists... Done
+Building dependency tree... Done
+Reading state information... Done
+The following additional packages will be installed:
+  libatm1 libbpf0 libbsd0 libcap2-bin libelf1 libmd0 libmnl0 libpam-cap libxtables12
+Suggested packages:
+  iproute2-doc
+The following NEW packages will be installed:
+  iproute2 libatm1 libbpf0 libbsd0 libcap2-bin libelf1 libmd0 libmnl0 libpam-cap libxtables12
+0 upgraded, 10 newly installed, 0 to remove and 8 not upgraded.
+Need to get 1430 kB of archives.
+After this operation, 4151 kB of additional disk space will be used.
+Do you want to continue? [Y/n]
+Get:1 http://archive.ubuntu.com/ubuntu jammy/main amd64 libelf1 amd64 0.186-
+......
+Processing triggers for libc-bin (2.35-0ubuntu3.1) ...
+root@f7806fc2e018:/# apt install iputils-ping
+Reading package lists... Done
+Building dependency tree... Done
+Reading state information... Done
+The following NEW packages will be installed:
+  iputils-ping
+0 upgraded, 1 newly installed, 0 to remove and 8 not upgraded.
+Need to get 42.9 kB of archives.
+After this operation, 116 kB of additional disk space will be used.
+Get:1 http://archive.ubuntu.com/ubuntu jammy/main amd64 iputils-ping amd64 3:20211215-1 [42.9 kB]
+Fetched 42.9 kB in 2s (22.5 kB/s)
+debconf: delaying package configuration, since apt-utils is not installed
+Selecting previously unselected package iputils-ping.
+(Reading database ... 4639 files and directories currently installed.)
+Preparing to unpack .../iputils-ping_3%3a20211215-1_amd64.deb ...
+Unpacking iputils-ping (3:20211215-1) ...
+Setting up iputils-ping (3:20211215-1) ...
+root@f7806fc2e018:/# ip addr
+1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN group default qlen 1000
+    link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00
+    inet 127.0.0.1/8 scope host lo
+       valid_lft forever preferred_lft forever
+    inet6 ::1/128 scope host
+       valid_lft forever preferred_lft forever
+20: eth0@if21: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue state UP group default
+    link/ether 02:42:ac:11:00:02 brd ff:ff:ff:ff:ff:ff link-netnsid 0
+    inet 172.17.0.2/16 brd 172.17.255.255 scope global eth0
+       valid_lft forever preferred_lft forever
+    inet6 240e:x:x:55e0:1:x:x:2/80 scope global nodad
+       valid_lft forever preferred_lft forever
+    inet6 fe80::42:acff:fe11:2/64 scope link
+       valid_lft forever preferred_lft forever
+root@f7806fc2e018:/# ping 2400:3200:baba::1
+PING 2400:3200:baba::1(2400:3200:baba::1) 56 data bytes
+64 bytes from 2400:3200:baba::1: icmp_seq=1 ttl=118 time=26.6 ms
+64 bytes from 2400:3200:baba::1: icmp_seq=2 ttl=118 time=26.3 ms
+^C
+--- 2400:3200:baba::1 ping statistics ---
+2 packets transmitted, 2 received, 0% packet loss, time 1002ms
+rtt min/avg/max/mdev = 26.342/26.484/26.626/0.142 ms
+```
+
+首先启动一个ubuntu容器，安装iproute2和ping。通过ip addr可以观察到这个容器已经被赋予一个GUA IPv6地址，同时ping也证明这个容器是可以访问公网IPv6的。其实这里我们能够进行软件安装已经表明这个容器具有公网的访问权限，宿主机是没有能上公网的IPv4地址的，因此这个过程必然是通过IPv6实现的。
+
+### 自定义桥接网络
+
+我们也可以通过创建自定义桥接网络的方式来指定IPv4和IPv6网段，效果和这个默认的docker0差不多：
+
+```bash
+#手工创建一个新的桥接网络：
+docker network create -d bridge --ipv6 --subnet "240e:x:x:55e0:2::/80" --gateway="240e:x:x:55e0:2::1" --subnet=172.28.0.0/16 --gateway=172.28.0.1 ipv6
+# 选用这个新桥接网络，并指定IPv6地址：
+docker run -itd -P --ip=172.28.0.101 --ip6="240e:x:x:55e0:2::101" --network=ipv6 --name=ipv6test ubuntu:22.04 /bin/bash
+```
+
+通过指定默认桥接网络IPv6地址段或者新建桥接网络方式配置IPv6的模式适合那些有固定公网IP段的环境（某些云厂商会分配一段/64的地址给用户），如果是通过SLAAC或者DHCPv6动态获取到公网IPv6，每次地址变更都需要重新配置IPv6地址。
+
+## 容器对外提供公网IPv6服务
+
+容器对外暴露IPv6服务有很多方式，比如可以通过宿主机做DNAT端口转发。我们这里主要讨论NDP代理模式。NDP代理有一个大前提，就是我们的容器需要通过上述的桥接模式，在容器IPv6网段上指定了GUA地址，每个容器都获得公网IPv6地址。
+
+通过“默认桥接改GUA地址段”或者“自定义桥接网络”方式，我们已经使得容器可以通过NAT模式访问外部公网服务，并且有能力给容器设置一个静态的IPv6地址。但是我们依然没法在公网通过容器的IPv6地址访问容器提供的服务。
+比如，我在容器ipv6test里有这么一个地址:
+
+```bash
+[root@h48 ~]# docker exec -ti ipv6test bash
+root@f7806fc2e018:/# ip addr
+......
+20: eth0@if21: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue state UP group default 
+    link/ether 02:42:ac:11:00:02 brd ff:ff:ff:ff:ff:ff link-netnsid 0
+    inet 172.17.0.2/16 brd 172.17.255.255 scope global eth0
+       valid_lft forever preferred_lft forever
+    inet6 240e:x:x:55e0:1:242:ac11:2/80 scope global nodad 
+       valid_lft forever preferred_lft forever
+    inet6 fe80::42:acff:fe11:2/64 scope link 
+       valid_lft forever preferred_lft forever
+
+```
+
+这个地址在A-Node上是可以ping通的：
+
+```bash
+[root@h48 ~]# ping 240e:x:x:55e0:1:242:ac11:2
+PING 240e:x:x:55e0:1:242:ac11:2(240e:x:x:55e0:1:242:ac11:2) 56 data bytes
+64 bytes from 240e:x:x:55e0:1:242:ac11:2: icmp_seq=1 ttl=64 time=0.078 ms
+64 bytes from 240e:x:x:55e0:1:242:ac11:2: icmp_seq=2 ttl=64 time=0.048 ms
+```
+
+但是在其他节点就无法ping通：
+
+```bash
+home@hlxd:~$ ping 240e:x:x:55e0:1:242:ac11:2
+PING 240e:x:x:55e0:1:242:ac11:2(240e:x:x:55e0:1:242:ac11:2) 56 data bytes
+^C
+--- 240e:x:x:55e0:1:242:ac11:2 ping statistics ---
+2 packets transmitted, 0 received, 100% packet loss, time 1016ms
+```
+
+我们需要通过ndp proxy来实现IP对外开放，首先需要调整内核参数:
+
+```bash
+sysctl -w "net.ipv6.conf.enp0s8.proxy_ndp=1"
+```
+
+这里的enp0s8是宿主机(A-Node)上配置公网IPv6的接口。
+然后我们需要增加代理记录：
+
+```bash
+ip -6 neigh add proxy 240e:x:x:55e0:1:242:ac11:2 dev enp0s8
+ip -6 neigh add proxy 240e:x:x:55e0:1::1 dev enp0s8
+```
+
+此外我们还需要关注本机的nftables或者iptables，是否允许了转发。
+
+```bash
+[root@h48 ~]# nft list table ip6 filter|tee filer.nft
+table ip6 filter {
+	chain INPUT {
+		type filter hook input priority filter; policy accept;
+	}
+
+	chain FORWARD {
+		type filter hook forward priority filter; policy drop;
+		counter packets 60658 bytes 86851934 jump DOCKER-ISOLATION-STAGE-1
+......
+
+```
+
+这里默认的FORWARD策略是drop,作为验证我们可以将它改成accept。
+
+```bash
+[root@h48 ~]# vim filter.nft 
+[root@h48 ~]# head -8 filter.nft
+table ip6 filter {
+	chain INPUT {
+		type filter hook input priority filter; policy accept;
+	}
+
+	chain FORWARD {
+		type filter hook forward priority filter; policy accept;
+		counter packets 60658 bytes 86851934 jump DOCKER-ISOLATION-STAGE-1
+[root@h48 ~]# nft -f filter.nft
+```
+
+这样从U-Router上就能ping通容器的IPv6地址：
+
+```bash
+home@hlxd:~$ ping 240e:x:x:55e0:1:242:ac11:2
+PING 240e:x:x:55e0:1:242:ac11:2(240e:x:x:55e0:1:242:ac11:2) 56 data bytes
+64 bytes from 240e:x:x:55e0:1:242:ac11:2: icmp_seq=1 ttl=63 time=604 ms
+64 bytes from 240e:x:x:55e0:1:242:ac11:2: icmp_seq=2 ttl=63 time=0.363 ms
+64 bytes from 240e:x:x:55e0:1:242:ac11:2: icmp_seq=3 ttl=63 time=0.394 ms
+```
+
+当然即便是从外部的公网机器，也能ping通容器的这个IP，如果是重要机器，相关的防火墙规则需要设置完善。
+基于ndp proxy的方式，前提是需要在daemon.json里手工指定公网IPv6地址段，或者在创建自定义容器网络时设定公网IPv6地址段，对应家庭宽带网络而言，这个地址段是不固定的，每次地址变更都需要重置容器网络，因此只能做为一个实验配置。当然如果是公司/机构，能从运营商获取到固定的IPv6租约，这个方式还是可行的。
+
+# Macvlan容器网络配置
+
+网上很多文章在介绍Docker的网络模式的时候，都会提到docker支持none，bridge，host等模式。有些文章也会将container作为一种模式，也就是说docker启动容器时，可以选择同其他容器共用网络栈。当然docker也支持用户自行创建桥接类型的容器网络，在启动容器时指定自定义的这个网络。这些网络模式并不能原生支持跨主机的容器网络。
+随着Linux和docker自身技术的发展，目前docker已经支持了Overlay，IPvlan，Macvlan等网络驱动，并且支持第三方的网络插件，这些新网络驱动能较好地解决容器跨主机通信问题。Overlay模式用于在几个docker宿主机之间架设一个分布式的网络，解决了docker容器网络不能跨主机通讯的问题，docker设计这种模式主要是给docker swarm使用，但是它也支持单独的docker宿主机。IPvlan和Macvlan都支持从一个主机接口中虚拟化出多个网络接口,主要区别在于IPvlan虚拟出的网络接口都是共用一个Mac地址，而Macvlan虚拟出的接口都有各自的虚拟Mac地址。IPvlan在Linux内核3.9以上支持，但是docker在之前的内核上启用这个功能有bug，需要内核达到4.2以上才能稳定。Macvlan对内核的要求是3.9~3.19，或者4.0+。
+
+### Linux上的Macvlan
+
+#### Macvlan的几种模式
+
+Linux上的Macvlan支持如下几种模式：
+
+1. private模式，这种模式下就算是外部的交换机支持数据包回流功能,同一个主机下的各个实例之间也无法相互通讯。
+2. vepai(Virtual Ethernet Port Aggregator)模式,这种模式下如果交换机支持数据包回流，或者有一个三层路由器做转发，同一个物理接口下的实例间是可以通讯的。这是Macvlan的默认模式。
+3. bridge模式，桥接模式下所有的接口可以直接同其它接口之间互相通讯，不需要物理接口的对端做转发。
+4. passthru模式，直通模式下一个物理接口只支持一个虚拟接口，所有的流量都转发到这个虚拟接口上。
+5. source模式，这种模式下macvlan只接受指定的一组mac地址，其它数据包都会被丢弃。
+
+#### macvlan内核模块
+
+检查内核是否已经支持macvlan:
+
+```bash
+[root@h48 ~]# lsmod|grep macvlan
+macvlan                28672  0
+```
+
+#### macvlan简单实现原理
+
+Macvlan在内核源码的表现形式是驱动模块，当用户创建一个macvlan时，对应的就添加了一个虚拟网卡。相关代码可以参照如下链接：
+https://github.com/torvalds/linux/blob/master/drivers/net/macvlan.c
+iproute2通过netlink向内核下发消息，调用macvlan_common_newlink给enp0s8创建了一个名为macvlantest的虚拟网卡。如果这个物理网卡(enp0s8)是第一次创建macvlan网卡，内核会在macvlan_common_newlink->macvlan_port_create中为enp0s8注册一个名为macvlan_handle_frame的rx_handler接收处理函数。当数据包进入enp0s8网卡后，rx_handler会触发macvlan_handle_frame,根据数据包的mac地址是否匹配上macvlan的虚拟网卡做相应判断。
+对于广播或者多播数据包，如果是private或者passthru模式，macvlan_handle_frame会判断源地址是不是虚拟网卡地址，如果是就将数据包转给对应端口，并告知上层网卡该包已经被消费过。如果是bridge或者vepa模式,或者源mac地址没匹配到对应的虚拟网卡，这个报文会被广播到所有的虚拟网卡，同时告诉上层网卡这个包可以继续被处理。
+对于单播包，如果目标mac不是任何一个macvlan网卡的地址,或者是source模式，数据包就转给上层网卡继续处理；否则将数据包的入设备修改成匹配到的macvlan的虚拟网卡,并触发`__netif_receive_skb_core`重处理，由于这次网卡已经是子设备，将直接进入协议栈处理。
+macvlan虚拟网卡发送报文时，如果报文能找到确定目标，直接触发到对应虚拟网卡的接收流程；其他情况会修改报文的出设备为enp0s8之后，通过物理网卡发送出去。
+
+#### macvlan手工配置验证
+
+下面就是一个通过iproute2手工创建一个bridge模式macvlan网卡的指令：
+
+```bash
+ip link add link enp0s8 macvlantest type macvlan mode bridge
+```
+
+执行结果如下：
+
+```bash
+[root@h48 ~]# ip addr
+......
+8: macvlantest@enp0s8: <BROADCAST,MULTICAST> mtu 1500 qdisc noop state DOWN group default qlen 1000
+    link/ether be:15:20:10:8c:db brd ff:ff:ff:ff:ff:ff
+```
+
+初始状态下这个接口是没有ip地址，并且状态是down。我们可以手工给他设置一个ip地址,并启动它:
+
+```bash
+[root@h48 ~]# ip addr add 192.168.90.10/24 dev macvlantest
+[root@h48 ~]# ip link set dev macvlantest up
+[root@h48 ~]# ip addr
+......
+8: macvlantest@enp0s8: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue state UP group default qlen 1000
+    link/ether be:15:20:10:8c:db brd ff:ff:ff:ff:ff:ff
+    inet 192.168.90.10/24 scope global macvlantest
+       valid_lft forever preferred_lft forever
+    inet6 fe80::bc15:20ff:fe10:8cdb/64 scope link 
+       valid_lft forever preferred_lft forever
+```
+
+由于父接口上游是有dhcp服务器的，我们也可以验证下dhcp功能是否正常:
+
+```bash
+[root@h48 ~]# ip addr delete 192.168.90.10/24 dev macvlantest
+[root@h48 ~]# dhclient macvlantest  
+[root@h48 ~]# ip addr  
+......
+8: macvlantest@enp0s8: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue state UP group default qlen 1000
+    link/ether be:15:20:10:8c:db brd ff:ff:ff:ff:ff:ff 
+    inet 192.168.56.117/24 brd 192.168.56.255 scope global dynamic macvlantest
+       valid_lft 560sec preferred_lft 560sec  
+    inet6 fe80::bc15:20ff:fe10:8cdb/64 scope link
+       valid_lft forever preferred_lft forever
+```
+
+从U-Router机器ping下这个地址：
+
+```bash
+root@hlxd:/etc/systemd# ping 192.168.56.117
+PING 192.168.56.117 (192.168.56.117) 56(84) bytes of data.
+^C
+--- 192.168.56.117 ping statistics ---
+3 packets transmitted, 0 received, 100% packet loss, time 2041ms
+```
+
+发现无法ping通。Macvlan虚拟网卡要和其他机器互通，需要配置父接口为混杂模式，因此需要对父接口执行如下指令：
+
+```bash
+[root@h48 ~]# ip link set enp0s8 promisc on
+```
+
+设置之前enp0s8是这样的`3: enp0s8: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc fq_codel state UP group default qlen 1000`,设置之后：`3: enp0s8: <BROADCAST,MULTICAST,PROMISC,UP,LOWER_UP> mtu 1500 qdisc fq_codel state UP group default qlen 1000`。再从U-Router机器ping这个虚拟网卡就通了。
+
+```bash
+root@hlxd:/etc/systemd# ping 192.168.56.117
+PING 192.168.56.117 (192.168.56.117) 56(84) bytes of data.
+64 bytes from 192.168.56.117: icmp_seq=1 ttl=64 time=0.990 ms
+64 bytes from 192.168.56.117: icmp_seq=2 ttl=64 time=0.461 ms
+64 bytes from 192.168.56.117: icmp_seq=3 ttl=64 time=0.443 ms
+^C
+--- 192.168.56.117 ping statistics ---
+3 packets transmitted, 3 received, 0% packet loss, time 2026ms
+rtt min/avg/max/mdev = 0.443/0.631/0.990/0.253 ms
+```
+
+同样后面我们配置IPv6功能，如果需要同外部主机交互，也是需要设置网卡为混杂模式。
+
+#### 为macvlan网卡配置IPv6
+
+##### 内核方式配置
+
+本文的主题是IPv6，因此我们可以验证下如果给macvlan网卡配上IPv6地址。配置IPv6地址方式有很多种，比如，通过`ip -6 addr add `方式手工给网卡配上静态ip，或者是通过wide-dhcpv6-client等第三方DHCPv6客户端来触发一个IA_NA。当然DHCPv6方式需要网络上存在DHCPv6服务器。
+
+这个A-Node节点的enp0s8所在的网络目前不支持DHCPv6，只支持SLAAC方式获取IPv6，我们可以尝试以纯内核方式给这个虚拟网卡自动配置上IPv6地址。
+和SLAAC相关的内核参数主要有如下几个：
+
+```bash
+[root@h48 ~]# sysctl -a|grep macvlantest|grep forward
+net.ipv6.conf.macvlantest.forwarding = 1
+......
+[root@h48 ~]# sysctl -a|grep macvlantest|grep accept_ra
+net.ipv6.conf.macvlantest.accept_ra = 1
+......
+[root@h48 ~]# sysctl -a|grep macvlantest|grep autoconf
+net.ipv6.conf.macvlantest.autoconf = 1
+[root@h48 ~]# 
+```
+
+autoconf已经是1，因此不需要更改。这里由于forwarding是1，导致accpet_ra=1无法生效。解决这个问题有两种方式，一个是把forwarding改成0，另一个是把accept_ra改成1。
+
+首先验证下通过修改forwarding方式来修复冲突，我们没有在这个网卡做数据包转发的需求，因此将这个参数改成0并不会对系统功能产生什么不良后果：
+
+```bash
+[root@h48 ~]# ip addr show dev macvlantest
+8: macvlantest@enp0s8: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue state UP group default qlen 1000
+    link/ether be:15:20:10:8c:db brd ff:ff:ff:ff:ff:ff
+    inet 192.168.56.117/24 brd 192.168.56.255 scope global dynamic macvlantest
+       valid_lft 403sec preferred_lft 403sec
+    inet6 fe80::bc15:20ff:fe10:8cdb/64 scope link 
+       valid_lft forever preferred_lft forever
+[root@h48 ~]# sysctl -w "net.ipv6.conf.macvlantest.forwarding=0"
+net.ipv6.conf.macvlantest.forwarding = 0
+[root@h48 ~]# ip addr show dev macvlantest
+8: macvlantest@enp0s8: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue state UP group default qlen 1000
+    link/ether be:15:20:10:8c:db brd ff:ff:ff:ff:ff:ff
+    inet 192.168.56.117/24 brd 192.168.56.255 scope global dynamic macvlantest
+       valid_lft 650sec preferred_lft 650sec
+    inet6 fe80::bc15:20ff:fe10:8cdb/64 scope link 
+       valid_lft forever preferred_lft forever
+```
+
+执行之后，macvlan依然没有获取到IPv6地址，我们需要把macvlan虚拟接口重启下。
+
+```bash
+[root@h48 ~]# ip link set dev macvlantest down
+[root@h48 ~]# ip link set dev macvlantest up
+[root@h48 ~]# ip address show dev macvlantest
+8: macvlantest@enp0s8: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue state UP group default qlen 1000
+    link/ether be:15:20:10:8c:db brd ff:ff:ff:ff:ff:ff
+    inet 192.168.56.117/24 brd 192.168.56.255 scope global dynamic macvlantest
+       valid_lft 627sec preferred_lft 627sec
+    inet6 240e:x:x:25b0:bc15:20ff:fe10:8cdb/64 scope global dynamic mngtmpaddr 
+       valid_lft forever preferred_lft forever
+    inet6 fe80::bc15:20ff:fe10:8cdb/64 scope link 
+       valid_lft forever preferred_lft forever
+```
+
+可以看到接口上已经获取到IPv6地址。
+我们把环境先恢复一下，再尝试下修改accept_ra的方式。
+
+```bash
+[root@h48 ~]# sysctl -w "net.ipv6.conf.macvlantest.forwarding=1"
+net.ipv6.conf.macvlantest.forwarding = 1
+[root@h48 ~]# ip link set dev macvlantest down
+[root@h48 ~]# ip link set dev macvlantest up
+[root@h48 ~]# ip addr show dev macvlantest
+8: macvlantest@enp0s8: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue state UP group default qlen 1000
+    link/ether be:15:20:10:8c:db brd ff:ff:ff:ff:ff:ff
+    inet 192.168.56.117/24 brd 192.168.56.255 scope global dynamic macvlantest
+       valid_lft 413sec preferred_lft 413sec
+    inet6 fe80::bc15:20ff:fe10:8cdb/64 scope link 
+       valid_lft forever preferred_lft forever
+```
+
+设置accept_ra为2,并重启虚拟网卡，以获取SLAAC下发的IPv6地址：
+
+```bash
+[root@h48 ~]# sysctl -w "net.ipv6.conf.macvlantest.accept_ra=2"
+net.ipv6.conf.macvlantest.accept_ra = 2
+[root@h48 ~]# ip address show dev macvlantest
+8: macvlantest@enp0s8: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue state UP group default qlen 1000
+    link/ether be:15:20:10:8c:db brd ff:ff:ff:ff:ff:ff
+    inet 192.168.56.117/24 brd 192.168.56.255 scope global dynamic macvlantest
+       valid_lft 481sec preferred_lft 481sec
+    inet6 fe80::bc15:20ff:fe10:8cdb/64 scope link 
+       valid_lft forever preferred_lft forever
+[root@h48 ~]# ip link set dev macvlantest down
+[root@h48 ~]# ip link set dev macvlantest up
+[root@h48 ~]# ip address show dev macvlantest
+8: macvlantest@enp0s8: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue state UP group default qlen 1000
+    link/ether be:15:20:10:8c:db brd ff:ff:ff:ff:ff:ff
+    inet 192.168.56.117/24 brd 192.168.56.255 scope global dynamic macvlantest
+       valid_lft 457sec preferred_lft 457sec
+    inet6 240e:x:x:25b0:bc15:20ff:fe10:8cdb/64 scope global tentative dynamic mngtmpaddr 
+       valid_lft forever preferred_lft forever
+    inet6 fe80::bc15:20ff:fe10:8cdb/64 scope link 
+       valid_lft forever preferred_lft forever
+```
+
+##### 通过NetworkManager管理macvlan
+
+iproute2方式创建的macvlan网卡是暂态的，一旦机器重启，这些配置由于没有持久化机制，都会自动丢失。我们可以考虑通过NetworkManager这个高级网络管理工具来创建并实例化macvlan虚拟网卡。
+首先我们创建keyfile类型的配置文件：
+
+```bash
+[root@h48 system-connections]# cat macvlannm.nmconnection 
+[connection]
+id=macvlannm
+type=macvlan
+interface-name=macvlannm
+
+[macvlan]
+mode=2
+parent=enp0s8
+```
+
+应用使之生效：
+
+```bash
+[root@h48 system-connections]# nmcli c
+NAME    UUID                                  TYPE      DEVICE 
+enp0s3  ef881eb5-a093-4be1-ab4f-87ce7aea381c  ethernet  enp0s3 
+enp0s8  fd461a64-de69-3556-a208-146942c8fbee  ethernet  enp0s8 
+[root@h48 system-connections]# nmcli c reload
+[root@h48 system-connections]# nmcli c
+NAME       UUID                                  TYPE      DEVICE  
+enp0s3     ef881eb5-a093-4be1-ab4f-87ce7aea381c  ethernet  enp0s3  
+enp0s8     fd461a64-de69-3556-a208-146942c8fbee  ethernet  enp0s8  
+macvlannm  a01dfe94-0bf9-3273-9575-5e02caec557d  macvlan   macvlannm 
+[root@h48 system-connections]# ip address show dev macvlannm
+4: macvlannm@enp0s8: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue state UP group default qlen 1000
+    link/ether 32:8f:7c:95:00:15 brd ff:ff:ff:ff:ff:ff
+    inet 192.168.56.118/24 brd 192.168.56.255 scope global dynamic noprefixroute macvlannm
+       valid_lft 583sec preferred_lft 583sec
+    inet6 fe80::d4d4:f015:4408:87a5/64 scope link noprefixroute 
+       valid_lft forever preferred_lft forever
+```
+
+这里需要注意的是macvlannm.nmconnection这个文件的权限不能过大，建议是600，不然配置无法被加载。这个虚拟网卡目前是没有IPv6的，为了排除前置测试的影响，我对系统做了个重启，导致enp0s8上的网卡混杂模式丢失，因此我们需要重新加上这个配置：
+
+```bash
+[root@h48 system-connections]# ip link set enp0s8 promisc on
+[root@h48 system-connections]# nmcli c up macvlannm
+Connection successfully activated (D-Bus active path: /org/freedesktop/NetworkManager/ActiveConnection/4)
+[root@h48 system-connections]# ip addr show dev macvlannm
+4: macvlannm@enp0s8: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue state UP group default qlen 1000
+    link/ether c6:17:e5:72:fc:87 brd ff:ff:ff:ff:ff:ff
+    inet 192.168.56.120/24 brd 192.168.56.255 scope global dynamic noprefixroute macvlannm
+       valid_lft 456sec preferred_lft 456sec
+    inet6 240e:x:x:25b0:ce73:c45:24a8:ff6c/64 scope global noprefixroute 
+       valid_lft forever preferred_lft forever
+    inet6 fe80::d4d4:f015:4408:87a5/64 scope link noprefixroute 
+       valid_lft forever preferred_lft forever
+```
+
+通过NetworkManager的方式管理macvlan虚拟网卡可以确保系统在重启后，依然能自动完成网卡的配置，并且IPv6地址自动配置这些步骤也是通过NetworkManager实现的，无需手工修改内核参数做适配。
+这里我们引申一下关于enp0s8上网卡混杂模式持久化的问题，这个问题同样可以通过NetworkManager来解决。NetworkManager默认的配置插件是ifcfg-rh：
+
+```bash
+[root@h48 NetworkManager]# cat NetworkManager.conf
+ # Configuration file for NetworkManager.
+ #
+ # See "man 5 NetworkManager.conf" for details.
+......
+[main]
+ #plugins=ifcfg-rh
+```
+
+也就是/etc/sysconfig/network-scripts下的一些配置文件，在ifcfg-rh没有加载到信息的前提下，它还会加载亲生的keyfile配置文件，这种文件的路径是/etc/NetworkManager/system-connections。我们首先删除/etc/sysconfig/network-scripts下enp0s8相关配置，然后新增如下文件:
+
+```bash
+[root@h48 system-connections]# pwd
+/etc/NetworkManager/system-connections
+[root@h48 system-connections]# cat enps0s8.nmconnection
+[connection]
+id=enp0s8
+uuid=fd461a64-de69-3556-a208-146942c8fbee
+type=ethernet
+autoconnect=true
+
+[ipv4]
+method=auto
+
+[ipv6]
+method=auto
+
+[ethernet]
+mac-address=08:00:x:x:x:cf
+accept-all-mac-addresses=1
+
+```
+
+这里的关键配置是accept-all-mac-addresses，重启NetworkManager使之生效，后续主机重启这个混杂模式就不会失效了。
+
+#### 不同网络命名空间下的macvlan网卡
+
+前面我们已经在宿主机上创建了一个macvlan虚拟网卡，这个网卡的网络命名空间就落在系统默认netns上。我们可以将它改成其他命名空间。首先我们创建一个macvlan虚拟网卡，这个网卡可以宿主机上直接观察到：
+
+```bash
+[root@h48 system-connections]# ip link add macvlantest link enp0s8 type macvlan mode bridge
+[root@h48 system-connections]# ip addr add 192.168.90.10/24 dev macvlantest
+[root@h48 system-connections]# ip link set dev macvlantest up
+[root@h48 system-connections]# ip address show dev macvlantest
+5: macvlantest@enp0s8: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue state UP group default qlen 1000
+    link/ether a2:5f:58:19:56:f5 brd ff:ff:ff:ff:ff:ff
+    inet 192.168.90.10/24 scope global macvlantest
+       valid_lft forever preferred_lft forever
+    inet6 fe80::a05f:58ff:fe19:56f5/64 scope link 
+       valid_lft forever preferred_lft forever
+```
+
+我们再新增一个netns，并将macvlan虚拟网卡加入到这个netns中，这时，我们直接在宿主机上执行ip addr已经找不到接口：
+
+```bash
+[root@h48 system-connections]# ip netns add nstest1
+[root@h48 system-connections]# ip link set macvlantest netns nstest1
+[root@h48 system-connections]# ip address show dev macvlantest
+Device "macvlantest" does not exist.
+```
+
+我们可以在nstest1中找到这个网络接口：
+
+```bash
+[root@h48 system-connections]# ip netns exec nstest1 ip address show dev macvlantest
+5: macvlantest@if3: <BROADCAST,MULTICAST> mtu 1500 qdisc noop state DOWN group default qlen 1000
+    link/ether a2:5f:58:19:56:f5 brd ff:ff:ff:ff:ff:ff link-netnsid 0
+```
+
+这个网卡被切到nstest1之后，地址丢失了，我们可以尝试手工设置IP地址：
+
+```bash
+[root@h48 system-connections]# ip netns exec nstest1 ip addr add 192.168.90.10/24 dev macvlantest
+[root@h48 system-connections]# ip netns exec nstest1 ip address show dev macvlantest
+5: macvlantest@if3: <BROADCAST,MULTICAST> mtu 1500 qdisc noop state DOWN group default qlen 1000
+    link/ether a2:5f:58:19:56:f5 brd ff:ff:ff:ff:ff:ff link-netnsid 0
+    inet 192.168.90.10/24 scope global macvlantest
+       valid_lft forever preferred_lft forever
+[root@h48 system-connections]# 
+```
+
+### 基于macvlan驱动的docker IPv6网络设置
+
+Docker可以通过netns隔离技术搭配macvlan实现跨主机的容器网络。这种配置模式下，容器获得一个桥接到宿主机物理网卡的macvlan网卡，这个虚拟网卡可以直接同外部的交换机/路由器通信，也就是说它有能力通过SLAAC自动设置IPv6地址。Macvlan模式下容器的macvlan虚拟网卡通过接收外部IPv6路由器通告自行配置IPv6地址，自行维护IPv6地址的生命周期。
+
+我们先创建一个基于macvlan驱动的容器网络:
+
+```bash
+[root@h48 system-connections]# docker network create -d macvlan  --internal --ipv6 --subnet=fd00:8::/80  -o macvlan_mode=bridge -o parent=enp0s8 macnet
+92fbea2e373f0b5abd1d35b4a0c43048759e87e9dc2351f8c733b141d16f2ff9
+```
+
+这里我们并没有指定IPv4的网段信息，容器网络会自行指定，如果担心网络有冲突，也可以手工指定。同时，在IPv6部分，我们并没有指定了网关地址，而是设置了 --internal参数，如果设置了IPv6默认网关，流量有可能会走到这个内网的默认网关，从而影响公网访问。
+我们基于这个新增的容器网络创建一个新容器：
+
+```bash
+[root@h48 system-connections]# docker run  -itd  --name=ipv6macvlan --net=macnet  nettest /bin/bash
+d4625037037efe54a5ae12b85e8ef1141841cfb6f478be4a881bdc7a49b18768
+[root@h48 system-connections]# docker exec -ti ipv6macvlan bash
+root@d4625037037e:/# ip addr
+1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN group default qlen 1000
+    link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00
+    inet 127.0.0.1/8 scope host lo
+       valid_lft forever preferred_lft forever
+    inet6 ::1/128 scope host 
+       valid_lft forever preferred_lft forever
+7: eth0@if3: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue state UP group default 
+    link/ether 02:42:ac:13:00:02 brd ff:ff:ff:ff:ff:ff link-netnsid 0
+    inet 172.19.0.2/16 brd 172.19.255.255 scope global eth0
+       valid_lft forever preferred_lft forever
+    inet6 240e:x:x:0:42:acff:fe13:2/64 scope global dynamic mngtmpaddr 
+       valid_lft forever preferred_lft forever
+    inet6 fd00:8::2/80 scope global nodad 
+       valid_lft forever preferred_lft forever
+    inet6 fe80::42:acff:fe13:2/64 scope link 
+       valid_lft forever preferred_lft forever
+root@d4625037037e:/# ip -6 route show
+240e:x:x::/64 dev eth0 proto kernel metric 256 pref medium
+240e:x:x::/60 dev eth0 proto kernel metric 256 expires 86395sec pref medium
+fd00:8::/80 dev eth0 proto kernel metric 256 pref medium
+fe80::/64 dev eth0 proto kernel metric 256 pref medium
+default via fe80::x:x:x:4be9 dev eth0 proto ra metric 1024 expires 25sec hoplimit 64 pref low
+root@d4625037037e:/# ping 2400:3200:baba::1
+PING 2400:3200:baba::1(2400:3200:baba::1) 56 data bytes
+64 bytes from 2400:3200:baba::1: icmp_seq=1 ttl=118 time=29.6 ms
+64 bytes from 2400:3200:baba::1: icmp_seq=2 ttl=118 time=29.7 ms
+64 bytes from 2400:3200:baba::1: icmp_seq=3 ttl=118 time=29.9 ms
+```
+
+容器启动后，分配到一个公网IPv6地址，并且这个地址能够访问外部的公网IPv6资源。从外部公网IPv6机器也能ping通容器IP：
+
+```bash
+$ ping 240e:x:x:0:42:acff:fe13:2
+PING 240e:x:x:0:42:acff:fe13:2(240e:x:x:0:42:acff:fe13:2) 56 data bytes
+64 bytes from 240e:x:x:0:42:acff:fe13:2: icmp_seq=1 ttl=52 time=97.4 ms
+64 bytes from 240e:x:x:0:42:acff:fe13:2: icmp_seq=2 ttl=52 time=99.3 ms
+64 bytes from 240e:x:x:0:42:acff:fe13:2: icmp_seq=3 ttl=52 time=105 ms
