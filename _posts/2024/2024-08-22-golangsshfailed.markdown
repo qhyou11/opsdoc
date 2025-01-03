@@ -14,15 +14,15 @@ Aug 21 17:43:40 linux-ofmzmc1 sshd[27281]: fatal: matching cipher is not support
 为了排查这个问题，针对连接过程做抓包分析如下：
 
 1. XXShell 发送Key Exchange init ，当中，声明支持的加密算法为：aes128-gcm@openssh.com,aes256-gcm@openssh.com,chacha20-poly1305@openssh.com,aes128-ctr,aes192-ctr,aes256-ctr
-   ![](https://f.003721.xyz/2024/08/3cc793b5122bb815c9ce2594a069ccd0.png)
+   ![](https://pic.1510.cf/2024/08/3cc793b5122bb815c9ce2594a069ccd0.png)
 2. 服务端发送Key Exchange inti，声明支持的加密算法为：aes128-ctr,aes192-ctr,aes256-ctr,arcfour256,arcfour128,aes128-gcm@openssh.com,aes256-gcm@openssh.com,aes128-cbc,3des-cbc,blowfish-cbc,cast128-cbc,aes192-cbc,aes256-cbc,arcfour,rijndael-cbc@lysator.liu.se
 
-   ![](https://f.003721.xyz/2024/08/4a20cf203daa07d10964b480ad84362a.png)
+   ![](https://pic.1510.cf/2024/08/4a20cf203daa07d10964b480ad84362a.png)
 3. 按照先后顺序进行匹配，ssh 服务端匹配到aes128-gcm@openssh.com作为加密算法。实际上，ssh服务端并不支持asegcm这种算法。因此key交换失败，主机返回一个reset。
 4. 抓包里显示客户端最后发的是 Elliptic Curve Diffie-Hellman Key Exchange Init 消息，但是实际上服务端FIN包 ACK的是749，也就是Elliptic Curve Diffie-Hellman Key Exchange Init 前面的那个包，因此实际上交互失败是 key exchange init。
 5. openssh客户端成功的原因：不同的ssh客户端实现对加密算法选择的优先级不同，比如openssh client的交互中，key exchange init里算法顺序为：chacha20-poly1305@openssh.com,aes128-ctr,aes192-ctr,aes256-ctr,aes128-gcm@openssh.com,aes256-gcm@openssh.com；优先匹配到的就是aes128-ctr。
 
-   ![](https://f.003721.xyz/2024/08/3bb0ac854fcbbc9903f3a437aa24b941.png)
+   ![](https://pic.1510.cf/2024/08/3bb0ac854fcbbc9903f3a437aa24b941.png)
 
 # 建议操作
 

@@ -303,7 +303,7 @@ prefix后面的日志，可以从内核源码中找到各个字段的定义。
 
 从上一节我们可以大致了解nf_log_ipv6模块输出的TRACE日志格式，对于/var/log/iptables.log里的日志，我们可以根据TCP的OPT字段过滤出某个数据包，然后根据每条日志里的prefix字段找到对应的iptables规则，从而了解某个数据包是如何遍历内核中的iptables规则的。
 iptables的规则可以通过`iptables-save`打印出来。对于一个生产环境的kubernetes节点，这样的iptables规则一般都比较庞大，在里面追踪每条记录会比较费劲：
-![](https://f.003721.xyz/2024/08/2ee5b077aa46cf6b87ece722e35f37fa.png)
+![](https://pic.1510.cf/2024/08/2ee5b077aa46cf6b87ece722e35f37fa.png)
 因此我们写了个简单的脚本来解析这样跟踪日志：
 
 ```python
@@ -408,7 +408,7 @@ decode_trace_log('020405B40402080ACCEE00200000000001030307',iptables_map,'iptabl
 
 脚本的输入是两个文件和一个TCP的OPT值，一个是0101.txt，里面是跟踪日志产生时通过`iptables-save>0101.txt`保存的iptables规则。另外一个是iptables.log，也就是rsyslog输出的iptables日志。OPT值是iptables.log里某个数据包的值。
 脚本的执行效果如下：
-![](https://f.003721.xyz/2024/08/2b401bd9fe242de68e00bf75be8ac191.png)
+![](https://pic.1510.cf/2024/08/2b401bd9fe242de68e00bf75be8ac191.png)
 
 脚本首先用青色打印出某一行TRACE日志，然后根据prefix字段匹配出这一行日志对应的iptables规则。如果是恰好匹配到某个规则，就以绿色打印出该规则；如果是这个链的所有规则都遍历过了，action就是return，脚本会用灰色把这条链的最后一个规则打印出来，同时标明return到上一级链上；如果是系统链的所有规则都遍历过了，就以蓝色打印出这条链的policy。
 
@@ -817,23 +817,23 @@ tcpdump: listening on nflog, link-type NFLOG (Linux netfilter log messages), cap
 ```
 
 我们可以看到生成了50个数据包，这个pcap文件可以下载到本地，通过wireshark软件进行分析。
-![](https://f.003721.xyz/2024/08/999b932d5332ab0cfa50c41ffff32b8e.png)
+![](https://pic.1510.cf/2024/08/999b932d5332ab0cfa50c41ffff32b8e.png)
 展开Linux Netfilter NFLOG，我们可以看到熟悉的prefix字段：
-![](https://f.003721.xyz/2024/08/b409d39afe46a7ee29f0958b7f62a8ce.png)
+![](https://pic.1510.cf/2024/08/b409d39afe46a7ee29f0958b7f62a8ce.png)
 右击prefix，选择【应用为列】
-![](https://f.003721.xyz/2024/08/6beba3b96fcc25d86f2becb8ce1471fd.png)
+![](https://pic.1510.cf/2024/08/6beba3b96fcc25d86f2becb8ce1471fd.png)
 这样就可以把这个字段展示在列表里：
-![](https://f.003721.xyz/2024/08/714bd51dad3109f7855555b26bc6acec.png)
+![](https://pic.1510.cf/2024/08/714bd51dad3109f7855555b26bc6acec.png)
 同样我们可以把TCP的option也展示在列表里
-![](https://f.003721.xyz/2024/08/703151b42d98a9a139c62b0512b29c66.png)
+![](https://pic.1510.cf/2024/08/703151b42d98a9a139c62b0512b29c66.png)
 通过这个视图，可以清楚的显示数据包在iptables中是怎么流转的。如果我们需要通过文本方式批量处理这个日志，也可以通过wireshark将它导出成csv文件。
-![](https://f.003721.xyz/2024/08/212fef0b3df341b494b4518186517dc8.png)
+![](https://pic.1510.cf/2024/08/212fef0b3df341b494b4518186517dc8.png)
 导出结果如下:
-![](https://f.003721.xyz/2024/08/6e63378fb14815319679f0c44bc5a3b8.png)
+![](https://pic.1510.cf/2024/08/6e63378fb14815319679f0c44bc5a3b8.png)
 导出的文件同样可以作为iptables.log，然后用上文提及的脚本处理分析：
-![](https://f.003721.xyz/2024/08/9827a8f65bf48984380ee08eb3c71dea.png)
+![](https://pic.1510.cf/2024/08/9827a8f65bf48984380ee08eb3c71dea.png)
 
-![](https://f.003721.xyz/2024/08/ce44c79f3f63f3d37ee863c3bbfdc6b7.png)
+![](https://pic.1510.cf/2024/08/ce44c79f3f63f3d37ee863c3bbfdc6b7.png)
 
 ## ulogd2的方式进行日志分析
 
@@ -1111,7 +1111,7 @@ $ jq '"time:"+ .timestamp+" source_ip:"+.src_ip+" dest_ip:"+.dest_ip+" src_port:
 ```
 
 由于通过json输出的日志中没有tcp的OPT字段，我们手工构建一个伪OPT，以方便通过上文中的python脚本直接解码：
-![](https://f.003721.xyz/2024/08/c3a759946157ab4eb552bcf3acfdaf6b.png)
+![](https://pic.1510.cf/2024/08/c3a759946157ab4eb552bcf3acfdaf6b.png)
 
 # 附录
 
@@ -1143,7 +1143,7 @@ iptables中每个表都配置了若干条链。系统预置的链有PREROUTING�
 
 ## iptables数据包流转图
 
-![](https://f.003721.xyz/2024/08/27894a7b4c45258c003ec96b62e326bf.png)
+![](https://pic.1510.cf/2024/08/27894a7b4c45258c003ec96b62e326bf.png)
 上图源于wikimedia：
 [File:Netfilter-packet-flow.svg - Wikimedia Commons](https://commons.wikimedia.org/wiki/File:Netfilter-packet-flow.svg)
 iptables处理流程
@@ -1201,10 +1201,10 @@ DNAT的挂载点都在路由决策之前，这样DNAT转化后的地址才能作
 
 我们前面说了，DNAT和SNAT具有不同的优先级，因此wikimedia上的这个数据流转图在INPUT链上的顺序是不对的，INPUT上是SNAT，而SNAT的优先级是低于filter的。
 
-![](https://f.003721.xyz/2024/08/dcb6fd694dc1b6e5b073b8a8d65b1dae.png)
+![](https://pic.1510.cf/2024/08/dcb6fd694dc1b6e5b073b8a8d65b1dae.png)
 
 我们从正文中正常响应的trace的日志也可以看出来：
 
-![](https://f.003721.xyz/2024/08/4c7448b41290ac47b77d82fc5637c8a6.png)
+![](https://pic.1510.cf/2024/08/4c7448b41290ac47b77d82fc5637c8a6.png)
 
 Input链是先执行filter表，然后再执行那个nat表的。当然我们这个环境上nat表的INPUT链是空，在num为1的位置直接就命中了INPUT链的默认策略。

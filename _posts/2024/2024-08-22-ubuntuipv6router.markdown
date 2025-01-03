@@ -8,14 +8,14 @@ category: Ops
 # 环境概览
 
 如前文所提到的这个网络拓扑：
-![](https://f.003721.xyz/2024/08/8b7977c34c7115f377e39d039a52d2ef.png)
+![](https://pic.1510.cf/2024/08/8b7977c34c7115f377e39d039a52d2ef.png)
 
 我们在PC上接入两条网线到主路由，分别对应PC的en0和en3。本文所涉及的操作都在这个PC进行，通过Virtualbox虚拟出两台机器，一台是Ubuntu22.04 作为服务端（下文称之为U-Router），一台是AlmaLinux8作为验证的客户端（下文称之为A-Node），两个机器都桥接到PC上的en3接口，虚拟机内部网卡名为enp0s3。这个接口对应路由器的eth1，是作为uplink的br0的一员，因此我们能通过这个网络接口直接进行PPPoE拨号。为了实现在虚拟机上拨号，我们还需要设置虚拟网卡为混杂模式。
-![](https://f.003721.xyz/2024/08/dcdebd24e6812977800615ed88950b58.png)
+![](https://pic.1510.cf/2024/08/dcdebd24e6812977800615ed88950b58.png)
 
 运营商对于多拨一般是有限制的，我这边可以实现四拨，超过四个拨号连接就会失败。
 两个虚拟机还附加了一个Host-Only网络，内部网卡名为enp0s8，主要用于验证IPv6自动配置的过程：
-![](https://f.003721.xyz/2024/08/0c09b468e6938cd7c0ee674798c10ec2.png)
+![](https://pic.1510.cf/2024/08/0c09b468e6938cd7c0ee674798c10ec2.png)
 
 # PPPoE拨号设置
 
@@ -873,9 +873,9 @@ otherwise. Cannot be enabled on bond devices and when link local addressing is d
 
 当IPv6AcceptRA选项为true时（默认为true），如果在收到的RA上有相关标志位，或者链路上没发现有路由器，都会触发DHCPv6客户端。
 对应我们环境的情形，就是enp0s3收到一个RA报文，这报文里要求从DHCP获取其他信息，也就是设置了O标志位,所以它触发了DHCPv6客户端发起了Information-Requests请求。
-![](https://f.003721.xyz/2024/08/1f352395b84c69b42e8defb1b61f35d7.png)
+![](https://pic.1510.cf/2024/08/1f352395b84c69b42e8defb1b61f35d7.png)
 
-![](https://f.003721.xyz/2024/08/ce5b80f1773e23eeb1c4a9762d516540.png)
+![](https://pic.1510.cf/2024/08/ce5b80f1773e23eeb1c4a9762d516540.png)
 
 我们现在把IPv6的link-local禁用了，实际上这个接口就无法再处理IPv6请求，对我们现在的场景来说，这个是可以接受的，因为enp0s3接口上本身不应该获取到IPv6地址，我们只是通过这个接口发起PPPoE请求，实际的IPv6是在PPPoE接口上分配的。
 从下面的结果看，我们发现这个enp0s3目前是没有任何IPv6地址：
@@ -1380,25 +1380,25 @@ MMM DD 03:11:28 hlxd dhcp6c[64285]: client6_send: send solicit to ff02::1:2%pppo
 ### 底层抓包
 
 从底层tcpdump包也可以印证这个过程：
-![](https://f.003721.xyz/2024/08/8c3bd3112209091a044a512e2ad3831c.png)
+![](https://pic.1510.cf/2024/08/8c3bd3112209091a044a512e2ad3831c.png)
 
 Solict包：
-![](https://f.003721.xyz/2024/08/32f4cc81dfa4d7eb4e11d67ae9f60b72.png)
+![](https://pic.1510.cf/2024/08/32f4cc81dfa4d7eb4e11d67ae9f60b72.png)
 
 Advertise包：
-![](https://f.003721.xyz/2024/08/9e35c04b2bfc4281ddbcfaff88de3263.png)
+![](https://pic.1510.cf/2024/08/9e35c04b2bfc4281ddbcfaff88de3263.png)
 
 这里需要关注的是na部分，na返回的是地址不可用，因此我们看到在这四个包交互完成后，dhcp6c还在间断性地发Solict包，试图获取到na。我们在接口上看到的ip地址实际上是dhcpv6客户端从pd中自行分配的。
 PD部分有两个参数，T1和T2：T1是服务器要求客户端在86400秒后发送RENEW消息，对PD进行租约更新；T2是在服务端要求客户端在138240秒后发送REBIND请求。T2的值大于T1，如果T1时刻RENEW成功了，这两个计时器又会被重置，也就不需要REBIND了。
 另外我们还注意到，实际上dhcpv6下发的PD是有首选和有效生命周期的，这两个值分别是172800和259200，这个值不是我们指定通过Solicit发给服务端的86900 和87200，我们在接口上观察的`valid_lft forever preferred_lft forever`也是虚假的。
 Request 包体如下：
-![](https://f.003721.xyz/2024/08/a66b0ebc8f3c21c3cbfb70d89aaa3037.png)
+![](https://pic.1510.cf/2024/08/a66b0ebc8f3c21c3cbfb70d89aaa3037.png)
 
 还有Reply的包：
-![](https://f.003721.xyz/2024/08/b75ef9d436496be6510e975553098c1a.png)
+![](https://pic.1510.cf/2024/08/b75ef9d436496be6510e975553098c1a.png)
 
 由于NA中没有记录，导致后续继续生成Solicit包，这个包没有收到应答：
-![](https://f.003721.xyz/2024/08/63c65f839912399c5e01ce10d49b9100.png)
+![](https://pic.1510.cf/2024/08/63c65f839912399c5e01ce10d49b9100.png)
 
 这里还有一点值得提一下，虽然我们配置的ia-na没有从服务端获取到IP，但是这个配置是不可缺少的，如果不配ia-na，服务端不会下发PD。这和运营商的BRAS(broadband remote access server)上的DHCPv6服务端实现方式有关，有些运营商可能就不要求这个ia-na，这可能也是为什么网络上有些文章在介绍EdgeRouter配置IPv6时，启用了pd下面的prefix-only，这个选项启动，就相当于此处不发送ia-na。
 
@@ -1854,7 +1854,7 @@ root@hlxd:/etc/ppp/ipv6-up.d# chmod +x local
 
 这样在拨号成功后，可以自动将accept_ra改成2。这里可能还有一个潜在的问题，就是假如BRAS端发送RA的时间比我们执行/etc/ppp/ipv6-up.d/local的时间早那么一点点，那么我们的还是无法分配到IPv6地址，只能等待BRAS下个周期发的RA。
 U-Router之前已经获取到IPv6地址，在设置了forwarding之后，默认路由为什么会丢失？这是因为现在通过路由器通告获取的默认路由，都是有时效性的，过期了就自动删除，需要通过RA来更新：
-![](https://f.003721.xyz/2024/08/ececdfdaae7867e34879088c2cf9eda6.png)
+![](https://pic.1510.cf/2024/08/ececdfdaae7867e34879088c2cf9eda6.png)
 
 U-Router重启pppoe拨号服务，并相应重启wide-dhcpv6-client和radvd服务。
 A-Node机器更新接口ip：

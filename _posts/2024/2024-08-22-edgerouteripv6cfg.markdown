@@ -12,7 +12,7 @@ category: Ops
 
 我的家庭网络架构大致如下图所示，由两个CPE(Customer Premise Equipment，讲人话就是光猫)，一个有线路由器(UBNT ER-X),两个无线路由器组成。两个CPE分别由电信和移动提供，电信的是烽火AN5006-02-A ，移动的是中兴ZXHN F663N。
 
-![](https://f.003721.xyz/2024/08/8b7977c34c7115f377e39d039a52d2ef.png)
+![](https://pic.1510.cf/2024/08/8b7977c34c7115f377e39d039a52d2ef.png)
 
 电信的CPE安装时让装维师傅开通了IPv4公网权限，同时做了桥接，也就是它本身不发起PPPoE拨号，需要下级路由器实现。电信CPE有两个网口，一个是千兆网口，一个是百兆网口。百兆网口接在一个无线路由器上，通过这个无线路由器拨号上网，提供稳定的网络给家里各个手机，平板上网。电信电信宽带签约速率时100M，因此这个百兆网口理论上是足够了，为了不影响家人上网，引发投诉，本次改造不涉及这个无线路由器的变更。千兆网口接在UBNT有线千兆路由器的eth0上，是我们本次测试的上联链路之一。
 移动的CPE由设备自行拨号，我们通过DHCP上网，这个设备由一个千兆网口，四个十兆网口（是的，没错，在2023年还能见到10M的口子感觉有些魔幻）。移动的千兆口接在UBNT千兆路由器的eth2上。
@@ -33,17 +33,17 @@ ER-X这个UBNT路由器在初始化时，选择了Basic Setup模式，把eth0作
 
 声明：向导模式我没有实际测试过，只是理论上可行。
 打开UBNT路由器的管理页面，比如https://192.168.3.1 ,输入用户名密码登录到系统。
-![](https://f.003721.xyz/2024/08/74ad505efe219f939c3b5afd80a7a776.png)
+![](https://pic.1510.cf/2024/08/74ad505efe219f939c3b5afd80a7a776.png)
 
 这里的管理页面地址和用户名密码取决于路由器初始化的配置，请参照官方说明文档配置。
 [EdgeRouter X ER-X Quick Start Guide (ubnt.com)](https://dl.ubnt.com/guides/edgemax/EdgeRouter_ER-X_QSG.pdf)
 点击Wizards，选择Basic Setup，按照下图设置，即可完成IPv6配置：
-![](https://f.003721.xyz/2024/08/058c9a4d9ceba1f058ec8fbaf426f882.png)
+![](https://pic.1510.cf/2024/08/058c9a4d9ceba1f058ec8fbaf426f882.png)
 
 LAN部分可以根据个人网络需求配置。
 这里需要重点关注的是DHCPv6 PD部分，这个配置是路由器从PPPoE接口发起前缀委派请求。这里的Prefix length需要根据运营商实际下发的PD来确认，我这边两个运营商都是/60。
 如何确认运营商分配的pd到底是多少呢？如果你是通过光猫（CPE）拨号，可以通过光猫的管理页面登录到系统查看，光猫设备上一般有提供用户名（user或useradmin）密码：
-![](https://f.003721.xyz/2024/08/d31fd35a883e6c69e39a0f0beff5a6b5.png)
+![](https://pic.1510.cf/2024/08/d31fd35a883e6c69e39a0f0beff5a6b5.png)
 
 当然如果你是通过光猫拨号，也就没有必要在有线路由器再次拨号了。如果你是自行拨号，有些路由器系统，比如OpenWRT一脉，会将PD信息展示在接口上。如果是UBNT这种路由器，就只能一次次试验了，从64开始，看看最小能配多少。
 
@@ -54,36 +54,36 @@ LAN部分可以根据个人网络需求配置。
 ### 配置树
 
 点击Config Tree，依次展开Interfaces，Bridge，br0，在pppoe下新增index为0的配置，输入基本的pppoe连接信息：
-![](https://f.003721.xyz/2024/08/c7a903f0c0e437ce61097821da0b0ac7.png)
+![](https://pic.1510.cf/2024/08/c7a903f0c0e437ce61097821da0b0ac7.png)
 
 这部分因人而异，常规情况下，应该配置的是Interfaces-Ethernet-eth0-pppoe。前面说过，我这边的环境略微特殊，把eth0和eth1加到br0里了，因此，pppoe需要在br0里配置。
 在pppoe-0下面需要点击ipv6后面的+号，配置相关选项启用ipv6.
-![](https://f.003721.xyz/2024/08/d5506447dd1a91918d2be4aed0d6e38b.png)
+![](https://pic.1510.cf/2024/08/d5506447dd1a91918d2be4aed0d6e38b.png)
 
 firewall里启用防火墙：
-![](https://f.003721.xyz/2024/08/96a295da881c2bfbf2cabff33f9aa8b6.png)
+![](https://pic.1510.cf/2024/08/96a295da881c2bfbf2cabff33f9aa8b6.png)
 
-![](https://f.003721.xyz/2024/08/823d7af25babda39d5e3fdfc03b93a7a.png)
+![](https://pic.1510.cf/2024/08/823d7af25babda39d5e3fdfc03b93a7a.png)
 
 重点在pd的配置，新增了pd0，prefix-length设置为/60：
-![](https://f.003721.xyz/2024/08/2cba5ebf57fb74686f12324199cd2f09.png)
+![](https://pic.1510.cf/2024/08/2cba5ebf57fb74686f12324199cd2f09.png)
 
 pd下面有个prefix-only，网上有些文档是要求打开，我这边打开配置后反而有问题，因此这里没有设置该参数。
 下行接口配置的是硬件switch0：
-![](https://f.003721.xyz/2024/08/c2fb55e043115335706457ce342651e1.png)
+![](https://pic.1510.cf/2024/08/c2fb55e043115335706457ce342651e1.png)
 
 host-address和prefix-id可以自行配置，service选slaac。
-![](https://f.003721.xyz/2024/08/a0bdfddad7362f6c1e1ef466b9c8f4b1.png)
+![](https://pic.1510.cf/2024/08/a0bdfddad7362f6c1e1ef466b9c8f4b1.png)
 
 prefix-id是有范围的，这个值其实是《IPv6基础》里提到的subnet-id.如果你的运营商下发的pd是/60,可选的值就是0-15.
 LAN，也就是switch0需要开启路由通告：
-![](https://f.003721.xyz/2024/08/687e31621ddcefca0e63f4407df0d04e.png)
+![](https://pic.1510.cf/2024/08/687e31621ddcefca0e63f4407df0d04e.png)
 
 prefix为::/64
-![](https://f.003721.xyz/2024/08/9ac71f1f413af0987f8b86f9b6ae4eeb.png)
+![](https://pic.1510.cf/2024/08/9ac71f1f413af0987f8b86f9b6ae4eeb.png)
 
 需要设置有效生存时间等参数：
-![](https://f.003721.xyz/2024/08/8c239d962b064fe77215b7f94cb3f20b.png)
+![](https://pic.1510.cf/2024/08/8c239d962b064fe77215b7f94cb3f20b.png)
 
 至此IPv6相关的配置基本完成，遗留一个防火墙规则的配置，在后续章节通过指令方式提供，可以参照配置。
 

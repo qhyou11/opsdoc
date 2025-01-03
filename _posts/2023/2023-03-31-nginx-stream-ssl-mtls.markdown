@@ -150,7 +150,7 @@ ssh -p 50002 testuser@127.0.0.1
 curl -so /dev/null -w "%{http_code}" https://web.example.com/ -k
 ```
 
-![](https://f.003721.xyz/2023/03/a62cbce45d8b9d1ab8d512d84f3619c9.png)
+![](https://pic.1510.cf/2023/03/a62cbce45d8b9d1ab8d512d84f3619c9.png)
 
 发现功能都正常.这里我们并没有在B机的Nginx中将web.example.com 转成http，而是直接通过curl去访问A机的https服务，并通过curl的-k指令去绕过证书安全性校验。如果不想用-k参数，可以带上A机的ca证书来访问：
 
